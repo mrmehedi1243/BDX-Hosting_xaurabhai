@@ -92,7 +92,7 @@ async function createBot() {
   const name = document.getElementById('new-name').value.trim();
   const desc = document.getElementById('new-desc').value.trim();
   if (!name) { showToast('Bot name required', 'error'); return; }
-  const res = await fetch('/api/bots', {
+  const res = await fetch('/x/bots', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({name, description: desc})
@@ -105,7 +105,7 @@ async function createBot() {
 async function startBot(id, e) {
   e.preventDefault(); e.stopPropagation();
   const btn = e.target; btn.disabled = true; btn.textContent = '...';
-  const res = await fetch(`/api/bots/${id}/start`, {method:'POST'});
+  const res = await fetch(`/x/bots/${id}/start`, {method:'POST'});
   if (res.ok) {
     document.getElementById(`status-${id}`).className = 'status-badge running';
     document.getElementById(`status-${id}`).textContent = 'running';
@@ -121,7 +121,7 @@ async function startBot(id, e) {
 async function stopBot(id, e) {
   e.preventDefault(); e.stopPropagation();
   const btn = e.target; btn.disabled = true; btn.textContent = '...';
-  const res = await fetch(`/api/bots/${id}/stop`, {method:'POST'});
+  const res = await fetch(`/x/bots/${id}/stop`, {method:'POST'});
   if (res.ok) {
     document.getElementById(`status-${id}`).className = 'status-badge stopped';
     document.getElementById(`status-${id}`).textContent = 'stopped';
@@ -136,7 +136,7 @@ async function stopBot(id, e) {
 async function restartBot(id, e) {
   e.preventDefault(); e.stopPropagation();
   const btn = e.target; btn.disabled = true; btn.textContent = '...';
-  const res = await fetch(`/api/bots/${id}/restart`, {method:'POST'});
+  const res = await fetch(`/x/bots/${id}/restart`, {method:'POST'});
   if (res.ok) { showToast('Bot restarted!'); setTimeout(() => location.reload(), 600); }
   else { btn.disabled = false; showToast('Failed', 'error'); }
 }
@@ -144,7 +144,7 @@ async function restartBot(id, e) {
 async function deleteBot(id, e) {
   e.preventDefault(); e.stopPropagation();
   if (!confirm('Delete this bot and all its files? This cannot be undone.')) return;
-  const res = await fetch(`/api/bots/${id}/delete`, {method:'DELETE'});
+  const res = await fetch(`/x/bots/${id}/delete`, {method:'DELETE'});
   if (res.ok) {
     document.getElementById(`bot-card-${id}`).remove();
     showToast('Bot deleted.');

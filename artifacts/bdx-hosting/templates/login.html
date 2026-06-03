@@ -9,16 +9,16 @@
 <body>
 
 <!-- Telegram Gate -->
-<div id="tg-gate" class="">
+<div id="tg-gate" {% if tg_joined %}class="hidden"{% endif %}>
   <div class="tg-box">
     <div class="logo">BDX<span>HOSTING</span></div>
     <div class="sub">// ACCESS CONTROL SYSTEM //</div>
-    <p>Join our official Telegram channel to unlock full access to <strong style="color:var(--green)">BDX HOSTING</strong> platform.</p>
+    <p>আমাদের Telegram channel join করুন — তারপর BDX HOSTING platform access করুন।</p>
     <a href="https://t.me/bdxapis" target="_blank" class="tg-btn" id="tg-join-btn">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.04 9.61c-.148.677-.548.84-1.11.523l-3.072-2.264-1.483 1.427c-.164.164-.302.302-.618.302l.22-3.12 5.677-5.127c.247-.22-.054-.342-.384-.122L7.13 14.38l-3.03-.948c-.658-.206-.672-.658.137-.974l11.837-4.562c.549-.199 1.03.133.849.972l-.361.38z"/></svg>
       Join @bdxapis
     </a>
-    <button class="tg-continue" onclick="joinedTelegram()">I have joined — Continue</button>
+    <button class="tg-continue" id="tg-done-btn">✔ Join করেছি — Continue</button>
   </div>
 </div>
 
@@ -29,19 +29,18 @@
 
     <div class="form-group">
       <label>Username</label>
-      <input class="form-input" type="text" id="username" placeholder="root@user" autocomplete="off" autofocus>
+      <input class="form-input" type="text" id="username" placeholder="your_username" autocomplete="off" autofocus>
     </div>
     <div class="form-group">
       <label>Password</label>
       <input class="form-input" type="password" id="password" placeholder="••••••••">
     </div>
     <div id="login-error" class="login-error"></div>
-    <button class="btn btn-green btn-full btn-lg" onclick="doLogin()" style="margin-top:1rem">
+    <button class="btn btn-green btn-full btn-lg" id="login-btn" onclick="doLogin()" style="margin-top:1rem">
       <span>▶</span> ACCESS SYSTEM
     </button>
-    <div class="login-notice">
-      Any username/password is accepted.<br>
-      Admin: <span>mehedixaura</span> (any password)
+    <div class="login-notice" style="margin-top:1rem">
+      নতুন user? যেকোনো username + password দিলে auto-register হবে।
     </div>
   </div>
 </div>
@@ -49,61 +48,83 @@
 <div id="toast"></div>
 
 <script>
-function joinedTelegram() {
-  document.cookie = "tg_joined=1;path=/;max-age=31536000";
-  document.getElementById('tg-gate').classList.add('hidden');
-}
+// Telegram Gate
 (function() {
-  if (document.cookie.includes('tg_joined=1')) {
-    const g = document.getElementById('tg-gate');
-    if (g) g.classList.add('hidden');
+  const gate = document.getElementById('tg-gate');
+  if (!gate) return;
+
+  // Already joined via cookie
+  if (document.cookie.split(';').some(c => c.trim().startsWith('tg_joined=1'))) {
+    gate.classList.add('hidden');
   }
-  const joinBtn = document.getElementById('tg-join-btn');
-  if (joinBtn) {
-    joinBtn.addEventListener('click', () => setTimeout(joinedTelegram, 1500));
-  }
+
+  document.getElementById('tg-join-btn').addEventListener('click', function() {
+    setTimeout(function() {
+      document.cookie = "tg_joined=1;path=/;max-age=31536000";
+      gate.classList.add('hidden');
+    }, 2000);
+  });
+
+  document.getElementById('tg-done-btn').addEventListener('click', function() {
+    document.cookie = "tg_joined=1;path=/;max-age=31536000";
+    gate.classList.add('hidden');
+  });
 })();
 
-document.getElementById('password').addEventListener('keydown', e => {
+// Login
+document.getElementById('password').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') doLogin();
 });
-document.getElementById('username').addEventListener('keydown', e => {
+document.getElementById('username').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') document.getElementById('password').focus();
 });
 
 async function doLogin() {
-  const btn = document.querySelector('.btn-green');
+  const btn = document.getElementById('login-btn');
   const err = document.getElementById('login-error');
   const username = document.getElementById('username').value.trim();
   const password = document.getElementById('password').value.trim();
+
+  err.style.display = 'none';
+
   if (!username || !password) {
     err.style.display = 'block';
-    err.textContent = 'Username and password required.';
+    err.textContent = 'Username এবং password দিন।';
     return;
   }
+
   btn.disabled = true;
-  btn.textContent = 'Authenticating...';
-  const res = await fetch('/api/login', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({username, password})
-  });
-  const data = await res.json();
-  if (res.ok) {
-    location.href = '/dashboard';
-  } else {
+  btn.innerHTML = '⟳ Authenticating...';
+
+  try {
+    const res = await fetch('/x/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username: username, password: password})
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      btn.innerHTML = '✔ Success! Redirecting...';
+      window.location.href = '/dashboard';
+    } else {
+      err.style.display = 'block';
+      err.textContent = data.error || 'Login failed.';
+      btn.disabled = false;
+      btn.innerHTML = '<span>▶</span> ACCESS SYSTEM';
+    }
+  } catch(e) {
     err.style.display = 'block';
-    err.textContent = data.error || 'Login failed.';
+    err.textContent = 'Server error. Try again.';
     btn.disabled = false;
     btn.innerHTML = '<span>▶</span> ACCESS SYSTEM';
   }
 }
 
-function showToast(msg, type='') {
+function showToast(msg, type) {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = type === 'error' ? 'error show' : 'show';
-  setTimeout(() => t.className = type === 'error' ? 'error' : '', 3000);
+  t.className = (type === 'error' ? 'error ' : '') + 'show';
+  setTimeout(() => { t.className = type === 'error' ? 'error' : ''; }, 3000);
 }
 </script>
 </body>

@@ -99,7 +99,7 @@
 async function setLimit(userId) {
   const val = parseInt(document.getElementById(`new-limit-${userId}`).value);
   if (isNaN(val) || val < 1) { showToast('Invalid limit', 'error'); return; }
-  const res = await fetch(`/api/admin/users/${userId}/limit`, {
+  const res = await fetch(`/x/admin/users/${userId}/limit`, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({bot_limit: val})
@@ -111,7 +111,7 @@ async function setLimit(userId) {
 }
 
 async function loadAllBots() {
-  const res = await fetch('/api/admin/bots');
+  const res = await fetch('/x/admin/bots');
   if (!res.ok) return;
   const bots = await res.json();
   const tbody = document.getElementById('all-bots-body');
@@ -143,18 +143,18 @@ function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 
 async function adminStart(id, uid, btn) {
   btn.disabled = true; btn.textContent = '...';
-  await fetch(`/api/bots/${id}/start`, {method:'POST'});
+  await fetch(`/x/bots/${id}/start`, {method:'POST'});
   loadAllBots();
 }
 async function adminStop(id, uid, btn) {
   btn.disabled = true; btn.textContent = '...';
-  await fetch(`/api/bots/${id}/stop`, {method:'POST'});
+  await fetch(`/x/bots/${id}/stop`, {method:'POST'});
   loadAllBots();
 }
 async function adminDel(id, btn) {
   if (!confirm('Delete this bot?')) return;
   btn.disabled = true;
-  await fetch(`/api/bots/${id}/delete`, {method:'DELETE'});
+  await fetch(`/x/bots/${id}/delete`, {method:'DELETE'});
   loadAllBots();
 }
 

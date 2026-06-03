@@ -71,7 +71,7 @@ function showToast(msg, type='') {
 
 // Logout
 async function logout() {
-  await fetch('/api/logout', {method:'POST'});
+  await fetch('/x/logout', {method:'POST'});
   location.href = '/login';
 }
 </script>

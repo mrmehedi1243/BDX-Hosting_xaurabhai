@@ -129,7 +129,8 @@ def index():
 def login_page():
     if "user_id" in session:
         return redirect(url_for("dashboard"))
-    return render_template("login.html")
+    tg_joined = request.cookies.get("tg_joined") == "1"
+    return render_template("login.html", tg_joined=tg_joined)
 
 @app.route("/dashboard")
 @login_required
@@ -141,7 +142,8 @@ def dashboard():
         "FROM bots b WHERE b.user_id = ? ORDER BY b.created_at DESC",
         (user["id"],)
     ).fetchall()
-    return render_template("dashboard.html", user=user, bots=bots)
+    tg_joined = request.cookies.get("tg_joined") == "1"
+    return render_template("dashboard.html", user=user, bots=bots, tg_joined=tg_joined)
 
 @app.route("/bot/<int:bot_id>")
 @login_required
@@ -155,7 +157,8 @@ def bot_detail(bot_id):
     logs = db.execute(
         "SELECT * FROM bot_logs WHERE bot_id = ? ORDER BY created_at DESC LIMIT 100", (bot_id,)
     ).fetchall()
-    return render_template("bot_detail.html", user=user, bot=bot, files=files, logs=list(reversed(logs)))
+    tg_joined = request.cookies.get("tg_joined") == "1"
+    return render_template("bot_detail.html", user=user, bot=bot, files=files, logs=list(reversed(logs)), tg_joined=tg_joined)
 
 @app.route("/admin")
 @login_required
@@ -172,13 +175,15 @@ def admin_panel():
     running_bots = db.execute("SELECT COUNT(*) FROM bots WHERE status = 'running'").fetchone()[0]
     total_users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
     total_files = db.execute("SELECT COUNT(*) FROM bot_files").fetchone()[0]
+    tg_joined = request.cookies.get("tg_joined") == "1"
     return render_template("admin.html", user=user, users=users,
                            total_bots=total_bots, running_bots=running_bots,
-                           total_users=total_users, total_files=total_files)
+                           total_users=total_users, total_files=total_files,
+                           tg_joined=tg_joined)
 
 # ─── AUTH API ─────────────────────────────────────────────────────────────────
 
-@app.route("/api/login", methods=["POST"])
+@app.route("/x/login", methods=["POST"])
 def api_login():
     data = request.get_json() or {}
     username = data.get("username", "").strip()
@@ -199,14 +204,14 @@ def api_login():
     session["is_admin"] = bool(user["is_admin"])
     return jsonify({"success": True, "is_admin": bool(user["is_admin"])})
 
-@app.route("/api/logout", methods=["POST"])
+@app.route("/x/logout", methods=["POST"])
 def api_logout():
     session.clear()
     return jsonify({"success": True})
 
 # ─── BOT API ─────────────────────────────────────────────────────────────────
 
-@app.route("/api/bots", methods=["GET"])
+@app.route("/x/bots", methods=["GET"])
 @login_required
 def api_list_bots():
     user = current_user()
@@ -218,7 +223,7 @@ def api_list_bots():
     ).fetchall()
     return jsonify([dict(b) for b in bots])
 
-@app.route("/api/bots", methods=["POST"])
+@app.route("/x/bots", methods=["POST"])
 @login_required
 def api_create_bot():
     user = current_user()
@@ -243,7 +248,7 @@ def api_create_bot():
     add_log(bot["id"], "info", f"Bot '{name}' created successfully.")
     return jsonify(dict(bot)), 201
 
-@app.route("/api/bots/<int:bot_id>/start", methods=["POST"])
+@app.route("/x/bots/<int:bot_id>/start", methods=["POST"])
 @login_required
 def api_start_bot(bot_id):
     user = current_user()
@@ -261,7 +266,7 @@ def api_start_bot(bot_id):
     add_log(bot_id, "success", "Bot is now online and accepting connections.")
     return jsonify({"status": "running"})
 
-@app.route("/api/bots/<int:bot_id>/stop", methods=["POST"])
+@app.route("/x/bots/<int:bot_id>/stop", methods=["POST"])
 @login_required
 def api_stop_bot(bot_id):
     user = current_user()
@@ -274,7 +279,7 @@ def api_stop_bot(bot_id):
     add_log(bot_id, "warn", "⏹ Instance stopped.")
     return jsonify({"status": "stopped"})
 
-@app.route("/api/bots/<int:bot_id>/restart", methods=["POST"])
+@app.route("/x/bots/<int:bot_id>/restart", methods=["POST"])
 @login_required
 def api_restart_bot(bot_id):
     user = current_user()
@@ -294,7 +299,7 @@ def api_restart_bot(bot_id):
     add_log(bot_id, "info", "All services restored.")
     return jsonify({"status": "running"})
 
-@app.route("/api/bots/<int:bot_id>/delete", methods=["DELETE"])
+@app.route("/x/bots/<int:bot_id>/delete", methods=["DELETE"])
 @login_required
 def api_delete_bot(bot_id):
     user = current_user()
@@ -308,7 +313,7 @@ def api_delete_bot(bot_id):
     db.commit()
     return jsonify({"success": True})
 
-@app.route("/api/bots/<int:bot_id>/logs", methods=["GET"])
+@app.route("/x/bots/<int:bot_id>/logs", methods=["GET"])
 @login_required
 def api_bot_logs(bot_id):
     user = current_user()
@@ -323,7 +328,7 @@ def api_bot_logs(bot_id):
 
 # ─── FILE API ────────────────────────────────────────────────────────────────
 
-@app.route("/api/bots/<int:bot_id>/files", methods=["GET"])
+@app.route("/x/bots/<int:bot_id>/files", methods=["GET"])
 @login_required
 def api_list_files(bot_id):
     user = current_user()
@@ -337,7 +342,7 @@ def api_list_files(bot_id):
     ).fetchall()
     return jsonify([dict(f) for f in files])
 
-@app.route("/api/bots/<int:bot_id>/files", methods=["POST"])
+@app.route("/x/bots/<int:bot_id>/files", methods=["POST"])
 @login_required
 def api_upload_file(bot_id):
     user = current_user()
@@ -372,7 +377,7 @@ def api_upload_file(bot_id):
     add_log(bot_id, "info", f"File uploaded: {filename} ({size} bytes)")
     return jsonify(dict(file_row)), 201
 
-@app.route("/api/bots/<int:bot_id>/files/<int:file_id>/content", methods=["GET"])
+@app.route("/x/bots/<int:bot_id>/files/<int:file_id>/content", methods=["GET"])
 @login_required
 def api_get_file_content(bot_id, file_id):
     user = current_user()
@@ -385,7 +390,7 @@ def api_get_file_content(bot_id, file_id):
         return jsonify({"error": "File not found"}), 404
     return jsonify({"filename": f["filename"], "content": f["content"]})
 
-@app.route("/api/bots/<int:bot_id>/files/<int:file_id>", methods=["DELETE"])
+@app.route("/x/bots/<int:bot_id>/files/<int:file_id>", methods=["DELETE"])
 @login_required
 def api_delete_file(bot_id, file_id):
     user = current_user()
@@ -402,7 +407,7 @@ def api_delete_file(bot_id, file_id):
 
 # ─── ADMIN API ────────────────────────────────────────────────────────────────
 
-@app.route("/api/admin/users", methods=["GET"])
+@app.route("/x/admin/users", methods=["GET"])
 @login_required
 def api_admin_users():
     user = current_user()
@@ -415,7 +420,7 @@ def api_admin_users():
     ).fetchall()
     return jsonify([dict(u) for u in users])
 
-@app.route("/api/admin/users/<int:user_id>/limit", methods=["POST"])
+@app.route("/x/admin/users/<int:user_id>/limit", methods=["POST"])
 @login_required
 def api_admin_set_limit(user_id):
     user = current_user()
@@ -428,7 +433,7 @@ def api_admin_set_limit(user_id):
     db.commit()
     return jsonify({"success": True, "bot_limit": limit})
 
-@app.route("/api/admin/stats", methods=["GET"])
+@app.route("/x/admin/stats", methods=["GET"])
 @login_required
 def api_admin_stats():
     user = current_user()
@@ -442,7 +447,7 @@ def api_admin_stats():
         "total_files": db.execute("SELECT COUNT(*) FROM bot_files").fetchone()[0],
     })
 
-@app.route("/api/admin/bots", methods=["GET"])
+@app.route("/x/admin/bots", methods=["GET"])
 @login_required
 def api_admin_all_bots():
     user = current_user()
@@ -455,7 +460,7 @@ def api_admin_all_bots():
     ).fetchall()
     return jsonify([dict(b) for b in bots])
 
-@app.route("/api/bots/<int:bot_id>/logs/add", methods=["POST"])
+@app.route("/x/bots/<int:bot_id>/logs/add", methods=["POST"])
 @login_required
 def api_add_log(bot_id):
     user = current_user()

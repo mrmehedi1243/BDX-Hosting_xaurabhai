@@ -148,7 +148,7 @@ function appendLog(log) {
 function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 async function refreshLogs() {
-  const res = await fetch(`/api/bots/${BOT_ID}/logs`);
+  const res = await fetch(`/x/bots/${BOT_ID}/logs`);
   if (!res.ok) return;
   const logs = await res.json();
   const cb = document.getElementById('console-body');
@@ -161,7 +161,7 @@ async function addCustomLog() {
   const msg = document.getElementById('custom-log').value.trim();
   const level = document.getElementById('log-level').value;
   if (!msg) return;
-  const res = await fetch(`/api/bots/${BOT_ID}/logs/add`, {
+  const res = await fetch(`/x/bots/${BOT_ID}/logs/add`, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({message: msg, level})
@@ -184,23 +184,23 @@ if (statusEl && statusEl.textContent.trim() === 'running') {
 
 // ─── Bot Controls ────────────────────────────────────────
 async function startBot() {
-  const res = await fetch(`/api/bots/${BOT_ID}/start`, {method:'POST'});
+  const res = await fetch(`/x/bots/${BOT_ID}/start`, {method:'POST'});
   if (res.ok) { showToast('Bot started!'); setTimeout(() => location.reload(), 700); }
   else showToast('Failed', 'error');
 }
 async function stopBot() {
-  const res = await fetch(`/api/bots/${BOT_ID}/stop`, {method:'POST'});
+  const res = await fetch(`/x/bots/${BOT_ID}/stop`, {method:'POST'});
   if (res.ok) { showToast('Bot stopped.'); setTimeout(() => location.reload(), 700); }
   else showToast('Failed', 'error');
 }
 async function restartBot() {
-  const res = await fetch(`/api/bots/${BOT_ID}/restart`, {method:'POST'});
+  const res = await fetch(`/x/bots/${BOT_ID}/restart`, {method:'POST'});
   if (res.ok) { showToast('Bot restarted!'); setTimeout(() => location.reload(), 700); }
   else showToast('Failed', 'error');
 }
 async function deleteBot() {
   if (!confirm('Delete this bot and ALL files? This is permanent.')) return;
-  const res = await fetch(`/api/bots/${BOT_ID}/delete`, {method:'DELETE'});
+  const res = await fetch(`/x/bots/${BOT_ID}/delete`, {method:'DELETE'});
   if (res.ok) { showToast('Deleted.'); setTimeout(() => location.href='/dashboard', 600); }
   else showToast('Failed', 'error');
 }
@@ -209,7 +209,7 @@ async function deleteBot() {
 async function uploadFiles(input) {
   for (const file of input.files) {
     const content = await readFileAsText(file);
-    const res = await fetch(`/api/bots/${BOT_ID}/files`, {
+    const res = await fetch(`/x/bots/${BOT_ID}/files`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({filename: file.name, content})
@@ -255,7 +255,7 @@ async function saveNewFile() {
   const filename = document.getElementById('nf-name').value.trim();
   const content = document.getElementById('nf-content').value;
   if (!filename) { showToast('Filename required', 'error'); return; }
-  const res = await fetch(`/api/bots/${BOT_ID}/files`, {
+  const res = await fetch(`/x/bots/${BOT_ID}/files`, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({filename, content})
@@ -271,7 +271,7 @@ async function saveNewFile() {
 
 async function deleteFile(id) {
   if (!confirm('Delete this file?')) return;
-  const res = await fetch(`/api/bots/${BOT_ID}/files/${id}`, {method:'DELETE'});
+  const res = await fetch(`/x/bots/${BOT_ID}/files/${id}`, {method:'DELETE'});
   if (res.ok) {
     const el = document.getElementById(`file-${id}`);
     if (el) el.remove();
@@ -280,7 +280,7 @@ async function deleteFile(id) {
 }
 
 async function viewFile(id, name) {
-  const res = await fetch(`/api/bots/${BOT_ID}/files/${id}/content`);
+  const res = await fetch(`/x/bots/${BOT_ID}/files/${id}/content`);
   if (!res.ok) return;
   const data = await res.json();
   document.getElementById('modal-filename').textContent = `✎ ${name}`;
@@ -293,7 +293,7 @@ async function saveFileEdit() {
   const id = document.getElementById('modal-file-id').value;
   const content = document.getElementById('modal-content').value;
   const filename = document.getElementById('modal-filename').textContent.replace('✎ ','').trim();
-  const res = await fetch(`/api/bots/${BOT_ID}/files`, {
+  const res = await fetch(`/x/bots/${BOT_ID}/files`, {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({filename, content})
