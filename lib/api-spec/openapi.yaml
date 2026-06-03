@@ -1,22 +1,28 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: BDX HOSTING API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: bots
+    description: Bot instances
+  - name: users
+    description: User management
+  - name: files
+    description: File management
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +30,438 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current logged-in user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout current session
+      responses:
+        "200":
+          description: Logged out
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (admin only)
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /users/{userId}/limit:
+    patch:
+      operationId: updateUserLimit
+      tags: [users]
+      summary: Update bot limit for a user (admin only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLimitUpdate"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /bots:
+    get:
+      operationId: listBots
+      tags: [bots]
+      summary: List bots for current user (all bots for admin)
+      responses:
+        "200":
+          description: List of bots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Bot"
+    post:
+      operationId: createBot
+      tags: [bots]
+      summary: Create a new bot instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotInput"
+      responses:
+        "201":
+          description: Bot created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+        "403":
+          description: Bot limit reached
+
+  /bots/{botId}:
+    get:
+      operationId: getBot
+      tags: [bots]
+      summary: Get bot details
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteBot
+      tags: [bots]
+      summary: Delete a bot instance
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+
+  /bots/{botId}/start:
+    post:
+      operationId: startBot
+      tags: [bots]
+      summary: Start a bot instance
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+
+  /bots/{botId}/stop:
+    post:
+      operationId: stopBot
+      tags: [bots]
+      summary: Stop a bot instance
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot stopped
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Bot"
+
+  /bots/{botId}/logs:
+    get:
+      operationId: getBotLogs
+      tags: [bots]
+      summary: Get console logs for a bot
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Bot logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotLogs"
+
+  /bots/{botId}/files:
+    get:
+      operationId: listBotFiles
+      tags: [files]
+      summary: List files for a bot
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Files list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BotFile"
+
+  /bots/{botId}/files/upload:
+    post:
+      operationId: uploadBotFile
+      tags: [files]
+      summary: Upload a file to a bot
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FileUploadInput"
+      responses:
+        "201":
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotFile"
+
+  /bots/{botId}/files/{fileId}:
+    delete:
+      operationId: deleteBotFile
+      tags: [files]
+      summary: Delete a file from a bot
+      parameters:
+        - name: botId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [users]
+      summary: Get platform stats (admin) or personal stats (user)
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Stats"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    LoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+
+    User:
+      type: object
+      required: [id, username, isAdmin, botLimit, createdAt]
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        isAdmin:
+          type: boolean
+        botLimit:
+          type: integer
+        botCount:
+          type: integer
+        createdAt:
+          type: string
+
+    UserLimitUpdate:
+      type: object
+      required: [botLimit]
+      properties:
+        botLimit:
+          type: integer
+
+    Bot:
+      type: object
+      required: [id, name, status, userId, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [stopped, running, error]
+        userId:
+          type: integer
+        username:
+          type: ["string", "null"]
+        fileCount:
+          type: integer
+        createdAt:
+          type: string
+        startedAt:
+          type: ["string", "null"]
+
+    BotInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+
+    BotLogs:
+      type: object
+      required: [botId, logs]
+      properties:
+        botId:
+          type: integer
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogEntry"
+
+    LogEntry:
+      type: object
+      required: [timestamp, level, message]
+      properties:
+        timestamp:
+          type: string
+        level:
+          type: string
+          enum: [info, warn, error, debug, success]
+        message:
+          type: string
+
+    BotFile:
+      type: object
+      required: [id, botId, filename, size, createdAt]
+      properties:
+        id:
+          type: integer
+        botId:
+          type: integer
+        filename:
+          type: string
+        size:
+          type: integer
+        createdAt:
+          type: string
+
+    FileUploadInput:
+      type: object
+      required: [filename, content]
+      properties:
+        filename:
+          type: string
+        content:
+          type: string
+
+    Stats:
+      type: object
+      required: [totalBots, runningBots, totalUsers, myBots]
+      properties:
+        totalBots:
+          type: integer
+        runningBots:
+          type: integer
+        totalUsers:
+          type: integer
+        myBots:
+          type: integer
+        myRunningBots:
+          type: integer
