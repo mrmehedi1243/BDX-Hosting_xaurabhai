@@ -187,7 +187,8 @@ def install_requirements(bot_id):
     add_log_bg(bot_id, "info", "📦 Found requirements.txt — installing packages...")
     try:
         proc = subprocess.Popen(
-            [sys.executable, "-m", "pip", "install", "-r", req_path, "--quiet"],
+            [sys.executable, "-m", "pip", "install", "-r", req_path,
+             "--quiet", "--break-system-packages"],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, cwd=bot_dir(bot_id)
         )
@@ -662,7 +663,24 @@ def api_upload_file(bot_id):
     add_log_bg(bot_id, "info", f"📄 File saved: {filename} ({size} B)")
     # Auto-detect main file
     _maybe_set_main(bot_id, filename, content, db)
+    # Auto-install requirements.txt immediately when uploaded
+    if filename == "requirements.txt":
+        _write_and_install_bg(bot_id, filename, content)
     return jsonify(dict(row)), 201
+
+def _write_and_install_bg(bot_id, filename, content):
+    """Write a single file to disk and run pip install in background thread."""
+    def _run():
+        try:
+            d = bot_dir(bot_id)
+            path = os.path.join(d, filename)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8", errors="replace") as fh:
+                fh.write(content)
+            install_requirements(bot_id)
+        except Exception as e:
+            add_log_bg(bot_id, "error", f"❌ Auto-install error: {e}")
+    threading.Thread(target=_run, daemon=True).start()
 
 def _maybe_set_main(bot_id, filename, content, db):
     """If this file looks like a main file and no main is set yet, mark it."""
@@ -734,10 +752,15 @@ def api_upload_zip(bot_id):
         db.commit()
         add_log_bg(bot_id, "info", f"🔍 Auto-detected main file: {best}")
 
-    # Check for requirements.txt
-    req_names = [f for f in filenames if os.path.basename(f) == "requirements.txt"]
-    if req_names:
-        add_log_bg(bot_id, "info", f"📦 requirements.txt found in ZIP — will auto-install on start.")
+    # Auto-install requirements.txt if found in ZIP
+    req_entry = next((f for f in filenames if os.path.basename(f) == "requirements.txt"), None)
+    if req_entry:
+        try:
+            req_content = zf.read(req_entry).decode("utf-8", errors="replace")
+            # Always write to root of bot dir (regardless of ZIP subdir path)
+            _write_and_install_bg(bot_id, "requirements.txt", req_content)
+        except Exception as e:
+            add_log_bg(bot_id, "warn", f"⚠ Could not read requirements.txt from ZIP: {e}")
 
     add_log_bg(bot_id, "success", f"📦 ZIP uploaded: {len(uploaded)} files extracted.")
     return jsonify({"uploaded": len(uploaded), "files": uploaded, "main_file": best}), 201
