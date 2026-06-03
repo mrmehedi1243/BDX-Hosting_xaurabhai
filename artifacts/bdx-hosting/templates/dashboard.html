@@ -4,53 +4,41 @@
 
 {% block content %}
 <div class="container">
-  <div class="page-title">// BOT INSTANCES <span class="blink">_</span></div>
-  <div class="page-sub">Welcome back, <strong style="color:var(--green)">{{ user['username'] }}</strong> — Slot: {{ bots|length }}/{{ user['bot_limit'] }} used</div>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem">
+    <div>
+      <div class="page-title">// MY INSTANCES <span class="blink">_</span></div>
+      <div class="page-sub" style="margin-bottom:0">
+        <span style="color:var(--green)">{{ user['username'] }}</span>
+        <span style="color:var(--muted)"> · {{ bots|length }}/{{ user['bot_limit'] }} slots used</span>
+        {% if user['is_admin'] %}<span style="color:var(--yellow);font-size:0.75rem;margin-left:0.5rem;border:1px solid rgba(255,224,65,0.3);padding:0.1rem 0.4rem;border-radius:3px">ADMIN</span>{% endif %}
+      </div>
+    </div>
+    {% if bots|length < user['bot_limit'] %}
+    <button class="btn btn-green btn-lg" onclick="openDeployModal()">+ Deploy Instance</button>
+    {% else %}
+    <div style="color:var(--yellow);font-size:0.82rem;padding:0.5rem 0.8rem;border:1px solid rgba(255,224,65,0.2);border-radius:4px">⚠ Slot limit reached</div>
+    {% endif %}
+  </div>
 
   <!-- Stats -->
   <div class="stats-row">
     <div class="stat-card">
       <div class="stat-val">{{ bots|length }}</div>
-      <div class="stat-lbl">Total Bots</div>
+      <div class="stat-lbl">Total</div>
     </div>
     <div class="stat-card">
-      <div class="stat-val" id="running-count">{{ bots|selectattr('status','eq','running')|list|length }}</div>
+      <div class="stat-val" style="color:var(--green)" id="running-count">{{ bots|selectattr('status','eq','running')|list|length }}</div>
       <div class="stat-lbl">Running</div>
     </div>
     <div class="stat-card">
       <div class="stat-val">{{ user['bot_limit'] }}</div>
-      <div class="stat-lbl">Slot Limit</div>
+      <div class="stat-lbl">Limit</div>
     </div>
     <div class="stat-card">
       <div class="stat-val">{{ user['bot_limit'] - bots|length }}</div>
-      <div class="stat-lbl">Available</div>
+      <div class="stat-lbl">Free Slots</div>
     </div>
   </div>
-
-  <!-- New Bot -->
-  {% if bots|length < user['bot_limit'] %}
-  <div class="new-bot-card">
-    <h3>+ DEPLOY NEW INSTANCE</h3>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Bot Name</label>
-        <input class="form-input" type="text" id="new-name" placeholder="my_awesome_bot">
-      </div>
-      <div class="form-group">
-        <label>Description (optional)</label>
-        <input class="form-input" type="text" id="new-desc" placeholder="Telegram bot for...">
-      </div>
-      <div style="display:flex;align-items:flex-end">
-        <button class="btn btn-green btn-lg" onclick="createBot()">▶ Deploy</button>
-      </div>
-    </div>
-  </div>
-  {% else %}
-  <div class="new-bot-card" style="text-align:center;border-color:var(--muted)">
-    <div style="color:var(--yellow)">⚠ Bot slot limit reached ({{ user['bot_limit'] }}/{{ user['bot_limit'] }})</div>
-    <div style="color:var(--muted);font-size:0.82rem;margin-top:0.4rem">Contact admin to increase your limit.</div>
-  </div>
-  {% endif %}
 
   <!-- Bot Grid -->
   <div class="bots-grid" id="bots-grid">
@@ -61,94 +49,345 @@
         <div class="status-badge {{ bot['status'] }}" id="status-{{ bot['id'] }}">{{ bot['status'] }}</div>
       </div>
       <div class="bot-desc">{{ bot['description'] or 'No description' }}</div>
-      <div class="bot-meta">
-        <span>📁 {{ bot['file_count'] }} files</span>
-        <span>🕐 {{ bot['created_at'][:10] }}</span>
+      <div class="bot-meta" style="margin-bottom:0.6rem">
+        <span>🐍 {{ bot['file_count'] }} files</span>
+        {% if bot['main_file'] %}<span style="color:var(--cyan)">▶ {{ bot['main_file'] }}</span>{% endif %}
+        <span>{{ bot['created_at'][:10] }}</span>
       </div>
-      <div class="bot-actions">
+      <div class="bot-actions" id="actions-{{ bot['id'] }}">
         {% if bot['status'] == 'running' %}
         <button class="btn btn-yellow" onclick="stopBot({{ bot['id'] }},event)">⏹ Stop</button>
-        <button class="btn btn-cyan" onclick="restartBot({{ bot['id'] }},event)">↻ Restart</button>
+        <button class="btn btn-cyan" onclick="restartBot({{ bot['id'] }},event)">↻</button>
         {% else %}
         <button class="btn btn-green" onclick="startBot({{ bot['id'] }},event)">▶ Start</button>
         {% endif %}
         <a href="/bot/{{ bot['id'] }}" class="btn btn-cyan">⚙ Manage</a>
-        <button class="btn btn-red" onclick="deleteBot({{ bot['id'] }},event)">✕ Delete</button>
+        <button class="btn btn-red" onclick="deleteBot({{ bot['id'] }},event)">✕</button>
       </div>
     </div>
     {% endfor %}
+
     {% if not bots %}
-    <div style="color:var(--muted);font-size:0.9rem;padding:2rem 0;grid-column:1/-1">
-      No instances yet. Deploy your first bot above.
+    <div style="grid-column:1/-1;text-align:center;padding:4rem 2rem;border:1px dashed var(--green-dark);border-radius:4px">
+      <div style="font-size:2rem;margin-bottom:0.8rem">🤖</div>
+      <div style="color:var(--muted);margin-bottom:1.2rem">No instances yet</div>
+      <button class="btn btn-green btn-lg" onclick="openDeployModal()">+ Deploy Your First Instance</button>
     </div>
     {% endif %}
   </div>
 </div>
+
+<!-- ── Deploy Modal ─────────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="deploy-modal">
+  <div class="modal-box" style="max-width:580px;max-height:90vh;overflow-y:auto">
+
+    <div class="modal-title" style="font-size:1rem;margin-bottom:1.2rem">
+      ⚡ DEPLOY NEW INSTANCE
+      <button onclick="closeDeployModal()" style="float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem">✕</button>
+    </div>
+
+    <!-- Step 1: Info -->
+    <div style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:150px">
+        <label>Instance Name *</label>
+        <input class="form-input" type="text" id="d-name" placeholder="my_bot" autofocus>
+      </div>
+      <div class="form-group" style="flex:1;min-width:150px">
+        <label>Description</label>
+        <input class="form-input" type="text" id="d-desc" placeholder="Telegram bot for...">
+      </div>
+    </div>
+
+    <!-- Step 2: Files -->
+    <div style="margin-bottom:1rem">
+      <label style="display:block;color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:0.5rem">Upload Files</label>
+
+      <!-- Drop zone -->
+      <div id="d-dropzone" style="border:2px dashed var(--green-dark);border-radius:4px;padding:1.5rem;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:0.75rem">
+        <div style="font-size:1.5rem;margin-bottom:0.3rem">📁</div>
+        <div style="color:var(--muted);font-size:0.85rem">Drop files or ZIP here — or click to browse</div>
+        <div style="color:var(--green-dark);font-size:0.75rem;margin-top:0.3rem">.py · .txt · .json · .env · .yaml · .zip supported</div>
+        <input type="file" id="d-file-input" multiple accept=".py,.txt,.json,.env,.yaml,.yml,.cfg,.ini,.md,.js,.html,.css,.sh,.zip" style="display:none" onchange="handleFiles(this.files)">
+      </div>
+
+      <!-- Staged files list -->
+      <div id="d-file-list" style="display:none;background:var(--bg2);border:1px solid var(--card-border);border-radius:4px;max-height:160px;overflow-y:auto"></div>
+
+      <!-- Manual file editor -->
+      <div style="margin-top:0.75rem">
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.4rem">
+          <input class="form-input" type="text" id="d-new-name" placeholder="main.py" style="flex:1;font-size:0.82rem">
+          <button class="btn btn-green" style="font-size:0.78rem" onclick="addManualFile()">+ Add File</button>
+        </div>
+        <textarea class="file-content-area" id="d-new-content" style="min-height:80px;font-size:0.8rem" placeholder="# Paste your code here..."></textarea>
+      </div>
+    </div>
+
+    <!-- Main file override -->
+    <div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+      <span style="color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:1px">Main File:</span>
+      <select class="form-input" id="d-main" style="flex:1;min-width:140px">
+        <option value="">— auto-detect —</option>
+      </select>
+    </div>
+
+    <!-- Auto-start toggle -->
+    <div style="margin-bottom:1.2rem;display:flex;align-items:center;gap:0.6rem">
+      <label class="toggle-switch">
+        <input type="checkbox" id="d-autostart" checked>
+        <span class="toggle-slider"></span>
+      </label>
+      <span style="color:var(--muted);font-size:0.85rem">Auto-start after deploy</span>
+    </div>
+
+    <!-- Progress -->
+    <div id="d-progress" style="display:none;margin-bottom:1rem">
+      <div style="background:var(--bg2);border-radius:3px;height:5px;overflow:hidden;margin-bottom:0.4rem">
+        <div id="d-pbar" style="background:var(--green);height:100%;width:0%;transition:width 0.3s"></div>
+      </div>
+      <div id="d-pmsg" style="color:var(--muted);font-size:0.78rem"></div>
+    </div>
+
+    <div style="display:flex;gap:0.6rem;justify-content:flex-end">
+      <button class="btn btn-red" onclick="closeDeployModal()">Cancel</button>
+      <button class="btn btn-green btn-lg" id="d-deploy-btn" onclick="deployInstance()">⚡ Deploy</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.toggle-switch{position:relative;display:inline-block;width:38px;height:20px}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--muted);border-radius:20px;transition:.2s}
+.toggle-slider:before{content:"";position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.2s}
+input:checked+.toggle-slider{background:var(--green)}
+input:checked+.toggle-slider:before{transform:translateX(18px)}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-async function createBot() {
-  const name = document.getElementById('new-name').value.trim();
-  const desc = document.getElementById('new-desc').value.trim();
-  if (!name) { showToast('Bot name required', 'error'); return; }
-  const res = await fetch('/x/bots', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({name, description: desc})
-  });
-  const data = await res.json();
-  if (res.ok) { showToast('Bot deployed!'); setTimeout(() => location.reload(), 600); }
-  else showToast(data.error || 'Failed', 'error');
+// ── Staged files for deploy modal ────────────────────────
+let stagedFiles = []; // [{name, content}]
+
+function openDeployModal(){
+  stagedFiles = [];
+  document.getElementById('d-name').value='';
+  document.getElementById('d-desc').value='';
+  document.getElementById('d-new-name').value='';
+  document.getElementById('d-new-content').value='';
+  document.getElementById('d-file-list').style.display='none';
+  document.getElementById('d-file-list').innerHTML='';
+  document.getElementById('d-main').innerHTML='<option value="">— auto-detect —</option>';
+  document.getElementById('d-progress').style.display='none';
+  document.getElementById('d-pbar').style.width='0%';
+  document.getElementById('d-deploy-btn').disabled=false;
+  document.getElementById('d-deploy-btn').innerHTML='⚡ Deploy';
+  document.getElementById('deploy-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('d-name').focus(),100);
 }
 
-async function startBot(id, e) {
-  e.preventDefault(); e.stopPropagation();
-  const btn = e.target; btn.disabled = true; btn.textContent = '...';
-  const res = await fetch(`/x/bots/${id}/start`, {method:'POST'});
-  if (res.ok) {
-    document.getElementById(`status-${id}`).className = 'status-badge running';
-    document.getElementById(`status-${id}`).textContent = 'running';
-    btn.closest('.bot-actions').innerHTML = `
+function closeDeployModal(){
+  document.getElementById('deploy-modal').classList.add('hidden');
+}
+
+// ── Drop zone ─────────────────────────────────────────────
+const dz = document.getElementById('d-dropzone');
+dz.addEventListener('dragover', e=>{e.preventDefault();dz.style.borderColor='var(--green)';dz.style.background='var(--green-glow)';});
+dz.addEventListener('dragleave', ()=>{dz.style.borderColor='var(--green-dark)';dz.style.background='';});
+dz.addEventListener('drop', e=>{
+  e.preventDefault();dz.style.borderColor='var(--green-dark)';dz.style.background='';
+  handleFiles(e.dataTransfer.files);
+});
+dz.addEventListener('click', ()=>document.getElementById('d-file-input').click());
+
+async function handleFiles(files){
+  for(const file of files){
+    if(file.name.endsWith('.zip')){
+      await readZip(file);
+    } else {
+      const content = await readText(file);
+      stageFile(file.name, content);
+    }
+  }
+}
+
+async function readZip(file){
+  // Read zip using JSZip if available, else send to server later
+  // For now, stage the ZIP as binary for server-side extraction
+  const buf = await file.arrayBuffer();
+  const b64 = arrayBufferToBase64(buf);
+  // Mark as ZIP for later upload
+  stageFile(file.name, '', b64);
+}
+
+function arrayBufferToBase64(buffer){
+  let bin=''; const bytes=new Uint8Array(buffer);
+  for(let i=0;i<bytes.byteLength;i++) bin+=String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+function stageFile(name, content, zipB64=''){
+  // Remove existing with same name
+  stagedFiles = stagedFiles.filter(f=>f.name!==name);
+  stagedFiles.push({name, content, zipB64});
+  renderStagedFiles();
+  // Update main file selector if .py
+  if(name.endsWith('.py') && !zipB64){
+    const sel=document.getElementById('d-main');
+    if(!sel.querySelector(`option[value="${name}"]`)){
+      const o=document.createElement('option');
+      o.value=name;o.textContent=name;sel.appendChild(o);
+    }
+  }
+}
+
+function removeStagedFile(name){
+  stagedFiles=stagedFiles.filter(f=>f.name!==name);
+  renderStagedFiles();
+}
+
+function renderStagedFiles(){
+  const list=document.getElementById('d-file-list');
+  if(!stagedFiles.length){list.style.display='none';return;}
+  list.style.display='block';
+  list.innerHTML=stagedFiles.map(f=>`
+    <div style="display:flex;align-items:center;padding:0.4rem 0.75rem;border-bottom:1px solid rgba(0,255,65,0.05);gap:0.5rem">
+      <span style="font-size:0.9rem">${f.zipB64?'📦':'🐍'}</span>
+      <span style="flex:1;color:var(--white);font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(f.name)}</span>
+      <span style="color:var(--muted);font-size:0.72rem">${f.zipB64?'ZIP':(f.content.length>1024?(f.content.length/1024).toFixed(1)+'KB':f.content.length+'B')}</span>
+      <button onclick="removeStagedFile('${f.name}')" style="background:none;border:none;color:var(--red);cursor:pointer;opacity:0.6;padding:0 0.2rem">✕</button>
+    </div>`).join('');
+}
+
+function addManualFile(){
+  const name=document.getElementById('d-new-name').value.trim();
+  const content=document.getElementById('d-new-content').value;
+  if(!name){showToast('Filename required','error');return;}
+  stageFile(name, content);
+  document.getElementById('d-new-name').value='';
+  document.getElementById('d-new-content').value='';
+  showToast(`Added: ${name}`);
+}
+
+function readText(file){
+  return new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsText(file);});
+}
+
+function escH(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ── Deploy ────────────────────────────────────────────────
+function setProgress(pct, msg){
+  document.getElementById('d-progress').style.display='block';
+  document.getElementById('d-pbar').style.width=pct+'%';
+  document.getElementById('d-pmsg').textContent=msg;
+}
+
+async function deployInstance(){
+  const name=document.getElementById('d-name').value.trim();
+  const desc=document.getElementById('d-desc').value.trim();
+  const autoStart=document.getElementById('d-autostart').checked;
+  const mainFile=document.getElementById('d-main').value;
+
+  if(!name){showToast('Instance name required','error');return;}
+
+  const btn=document.getElementById('d-deploy-btn');
+  btn.disabled=true; btn.innerHTML='⟳ Creating...';
+  setProgress(10,'Creating instance...');
+
+  // 1. Create bot
+  const cr=await fetch('/x/bots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,description:desc})});
+  const cd=await cr.json();
+  if(!cr.ok){showToast(cd.error||'Create failed','error');btn.disabled=false;btn.innerHTML='⚡ Deploy';return;}
+  const botId=cd.id;
+
+  // 2. Upload staged files
+  const total=stagedFiles.length;
+  for(let i=0;i<total;i++){
+    const f=stagedFiles[i];
+    setProgress(20+Math.round((i/Math.max(total,1))*50), `Uploading ${f.name}...`);
+    if(f.zipB64){
+      // ZIP upload
+      const zr=await fetch(`/x/bots/${botId}/upload-zip`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:f.zipB64})});
+      if(!zr.ok){ const ze=await zr.json(); showToast(ze.error||`ZIP failed`,'error'); }
+    } else {
+      const fr=await fetch(`/x/bots/${botId}/files`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:f.name,content:f.content})});
+      if(!fr.ok) showToast(`Failed: ${f.name}`,'error');
+    }
+  }
+
+  // 3. Set main file if selected
+  if(mainFile){
+    setProgress(75,'Setting main file...');
+    await fetch(`/x/bots/${botId}/set-main`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({main_file:mainFile})});
+  }
+
+  // 4. Auto-start
+  if(autoStart && stagedFiles.length>0){
+    setProgress(85,'Starting instance...');
+    const sr=await fetch(`/x/bots/${botId}/start`,{method:'POST'});
+    const sd=await sr.json();
+    if(!sr.ok) showToast(sd.error||'Start failed','error');
+  }
+
+  setProgress(100,'Done! Redirecting...');
+  showToast(`✅ ${name} deployed!`);
+  setTimeout(()=>location.href=`/bot/${botId}`,800);
+}
+
+// Close on overlay click
+document.getElementById('deploy-modal').addEventListener('click',function(e){if(e.target===this)closeDeployModal();});
+
+// ── Bot card actions ──────────────────────────────────────
+async function startBot(id,e){
+  e.preventDefault();e.stopPropagation();
+  const btn=e.currentTarget;btn.disabled=true;btn.textContent='...';
+  const r=await fetch(`/x/bots/${id}/start`,{method:'POST'});
+  const d=await r.json();
+  if(r.ok){
+    document.getElementById(`status-${id}`).className='status-badge running';
+    document.getElementById(`status-${id}`).textContent='running';
+    document.getElementById(`actions-${id}`).innerHTML=`
       <button class="btn btn-yellow" onclick="stopBot(${id},event)">⏹ Stop</button>
-      <button class="btn btn-cyan" onclick="restartBot(${id},event)">↻ Restart</button>
+      <button class="btn btn-cyan" onclick="restartBot(${id},event)">↻</button>
       <a href="/bot/${id}" class="btn btn-cyan">⚙ Manage</a>
-      <button class="btn btn-red" onclick="deleteBot(${id},event)">✕ Delete</button>`;
-    showToast('Bot started!');
-  } else { btn.disabled = false; btn.innerHTML = '▶ Start'; showToast('Failed', 'error'); }
+      <button class="btn btn-red" onclick="deleteBot(${id},event)">✕</button>`;
+    showToast('Started!');
+  } else {
+    showToast(d.error||'Failed to start','error');
+    btn.disabled=false;btn.innerHTML='▶ Start';
+  }
 }
 
-async function stopBot(id, e) {
-  e.preventDefault(); e.stopPropagation();
-  const btn = e.target; btn.disabled = true; btn.textContent = '...';
-  const res = await fetch(`/x/bots/${id}/stop`, {method:'POST'});
-  if (res.ok) {
-    document.getElementById(`status-${id}`).className = 'status-badge stopped';
-    document.getElementById(`status-${id}`).textContent = 'stopped';
-    btn.closest('.bot-actions').innerHTML = `
+async function stopBot(id,e){
+  e.preventDefault();e.stopPropagation();
+  const btn=e.currentTarget;btn.disabled=true;btn.textContent='...';
+  const r=await fetch(`/x/bots/${id}/stop`,{method:'POST'});
+  if(r.ok){
+    document.getElementById(`status-${id}`).className='status-badge stopped';
+    document.getElementById(`status-${id}`).textContent='stopped';
+    document.getElementById(`actions-${id}`).innerHTML=`
       <button class="btn btn-green" onclick="startBot(${id},event)">▶ Start</button>
       <a href="/bot/${id}" class="btn btn-cyan">⚙ Manage</a>
-      <button class="btn btn-red" onclick="deleteBot(${id},event)">✕ Delete</button>`;
-    showToast('Bot stopped.');
-  } else { btn.disabled = false; btn.textContent = '⏹ Stop'; showToast('Failed', 'error'); }
+      <button class="btn btn-red" onclick="deleteBot(${id},event)">✕</button>`;
+    showToast('Stopped.');
+  } else{btn.disabled=false;btn.textContent='⏹ Stop';showToast('Failed','error');}
 }
 
-async function restartBot(id, e) {
-  e.preventDefault(); e.stopPropagation();
-  const btn = e.target; btn.disabled = true; btn.textContent = '...';
-  const res = await fetch(`/x/bots/${id}/restart`, {method:'POST'});
-  if (res.ok) { showToast('Bot restarted!'); setTimeout(() => location.reload(), 600); }
-  else { btn.disabled = false; showToast('Failed', 'error'); }
+async function restartBot(id,e){
+  e.preventDefault();e.stopPropagation();
+  const btn=e.currentTarget;btn.disabled=true;btn.textContent='...';
+  const r=await fetch(`/x/bots/${id}/restart`,{method:'POST'});
+  if(r.ok){showToast('Restarted!');setTimeout(()=>location.reload(),700);}
+  else{btn.disabled=false;btn.textContent='↻';showToast('Failed','error');}
 }
 
-async function deleteBot(id, e) {
-  e.preventDefault(); e.stopPropagation();
-  if (!confirm('Delete this bot and all its files? This cannot be undone.')) return;
-  const res = await fetch(`/x/bots/${id}/delete`, {method:'DELETE'});
-  if (res.ok) {
-    document.getElementById(`bot-card-${id}`).remove();
-    showToast('Bot deleted.');
-  } else showToast('Failed', 'error');
+async function deleteBot(id,e){
+  e.preventDefault();e.stopPropagation();
+  if(!confirm('Delete this instance and all its files? This is permanent.')) return;
+  const r=await fetch(`/x/bots/${id}/delete`,{method:'DELETE'});
+  if(r.ok){document.getElementById(`bot-card-${id}`).remove();showToast('Deleted.');}
+  else showToast('Failed','error');
 }
 </script>
 {% endblock %}

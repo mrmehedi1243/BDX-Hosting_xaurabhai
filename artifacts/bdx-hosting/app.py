@@ -396,15 +396,8 @@ def api_create_bot():
     add_log_bg(bot["id"], "info", f"✅ Bot '{name}' created.")
     return jsonify(dict(bot)), 201
 
-@app.route("/x/bots/<int:bot_id>/start", methods=["POST"])
-@login_required
-def api_start_bot(bot_id):
-    u = current_user()
-    db = get_db()
-    bot = db.execute("SELECT * FROM bots WHERE id=? AND user_id=?", (bot_id, u["id"])).fetchone()
-    if not bot:
-        return jsonify({"error": "Not found"}), 404
-
+def _do_start_bot(bot_id, u, db):
+    """Core start logic — shared by start and restart routes."""
     with INST_LOCK:
         if bot_id in INSTANCES:
             return jsonify({"error": "Already running"}), 400
@@ -419,11 +412,12 @@ def api_start_bot(bot_id):
     install_requirements(bot_id)
 
     # 3. Detect main file
-    main_file = bot["main_file"] or detect_main(filenames)
+    bot = db.execute("SELECT * FROM bots WHERE id=?", (bot_id,)).fetchone()
+    main_file = (bot["main_file"] or "").strip() or detect_main(filenames)
     if not main_file:
         return jsonify({"error": "Cannot detect main file. Upload a .py file."}), 400
 
-    add_log_bg(bot_id, "info", f"🔍 Main file detected: {main_file}")
+    add_log_bg(bot_id, "info", f"🔍 Main file: {main_file}")
 
     # 4. Check if web app & assign port
     main_path = os.path.join(bot_dir(bot_id), main_file)
@@ -433,7 +427,6 @@ def api_start_bot(bot_id):
         with open(main_path, "r", errors="replace") as fh:
             content = fh.read()
         is_web = detect_web(content)
-        # Inject PORT env var for Flask apps
         if is_web:
             env_inject = (
                 f"import os\nos.environ.setdefault('PORT','{port}')\n"
@@ -441,7 +434,6 @@ def api_start_bot(bot_id):
             )
             with open(main_path, "r+", errors="replace") as fh:
                 original = fh.read()
-                # Only inject if not already injected
                 if "os.environ.setdefault('PORT'" not in original:
                     fh.seek(0)
                     fh.write(env_inject + original)
@@ -449,7 +441,7 @@ def api_start_bot(bot_id):
         add_log_bg(bot_id, "warn", f"File read warning: {e}")
 
     if is_web:
-        add_log_bg(bot_id, "info", f"🌐 Web app detected — assigning port {port}")
+        add_log_bg(bot_id, "info", f"🌐 Web app detected — port {port}")
 
     # 5. Launch subprocess
     try:
@@ -469,7 +461,7 @@ def api_start_bot(bot_id):
     with INST_LOCK:
         INSTANCES[bot_id] = {"proc": proc, "port": port, "main": main_file, "is_web": is_web}
 
-    # 6. Start background reader thread
+    # 6. Background log reader
     t = threading.Thread(target=stream_output, args=(bot_id, proc), daemon=True)
     t.start()
 
@@ -483,10 +475,21 @@ def api_start_bot(bot_id):
 
     add_log_bg(bot_id, "success", f"▶ Instance started (PID {proc.pid})")
     if is_web:
-        domain = os.environ.get("REPLIT_DEV_DOMAIN", request.host)
+        domain = os.environ.get("REPLIT_DEV_DOMAIN", "localhost")
         add_log_bg(bot_id, "success", f"🌐 Public URL: https://{domain}/run/{bot_id}/")
 
     return jsonify({"status": "running", "main_file": main_file, "is_web": is_web, "port": port})
+
+
+@app.route("/x/bots/<int:bot_id>/start", methods=["POST"])
+@login_required
+def api_start_bot(bot_id):
+    u = current_user()
+    db = get_db()
+    bot = db.execute("SELECT * FROM bots WHERE id=? AND user_id=?", (bot_id, u["id"])).fetchone()
+    if not bot:
+        return jsonify({"error": "Not found"}), 404
+    return _do_start_bot(bot_id, u, db)
 
 @app.route("/x/bots/<int:bot_id>/stop", methods=["POST"])
 @login_required
@@ -518,29 +521,22 @@ def api_restart_bot(bot_id):
     bot = db.execute("SELECT * FROM bots WHERE id=? AND user_id=?", (bot_id, u["id"])).fetchone()
     if not bot:
         return jsonify({"error": "Not found"}), 404
-    # stop
+    # stop existing process
     with INST_LOCK:
         inst = INSTANCES.pop(bot_id, None)
     if inst:
-        try: inst["proc"].terminate(); inst["proc"].wait(timeout=4)
-        except: 
+        try:
+            inst["proc"].terminate()
+            inst["proc"].wait(timeout=4)
+        except Exception:
             try: inst["proc"].kill()
-            except: pass
+            except Exception: pass
     db.execute("UPDATE bots SET status='stopped' WHERE id=?", (bot_id,))
     db.commit()
-    add_log_bg(bot_id, "warn", "↻ Restarting...")
-    time.sleep(0.5)
-    # start again via internal call — re-use start logic
-    with app.test_request_context(
-        f"/x/bots/{bot_id}/start",
-        method="POST",
-        environ_base={"HTTP_COOKIE": f"session={request.cookies.get('session','')}"}
-    ):
-        session["user_id"] = u["id"]
-        session["username"] = u["username"]
-        session["is_admin"] = bool(u["is_admin"])
-        resp = api_start_bot(bot_id)
-    return resp
+    add_log_bg(bot_id, "warn", "↻ Restarting instance...")
+    time.sleep(0.4)
+    # re-use the start logic directly
+    return _do_start_bot(bot_id, u, db)
 
 @app.route("/x/bots/<int:bot_id>/delete", methods=["DELETE"])
 @login_required
@@ -808,6 +804,11 @@ def api_admin_bots():
         "FROM bots b JOIN users usr ON b.user_id=usr.id ORDER BY b.created_at DESC"
     ).fetchall()
     return jsonify([dict(r) for r in rows])
+
+@app.route("/favicon.ico")
+def favicon():
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#050f05"/><text x="4" y="24" font-size="22" fill="#00ff41">B</text></svg>'
+    return Response(svg, mimetype="image/svg+xml")
 
 if __name__ == "__main__":
     init_db()
