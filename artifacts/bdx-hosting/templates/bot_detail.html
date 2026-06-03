@@ -4,17 +4,30 @@
 
 {% block content %}
 <div class="container">
-  <!-- Back + Header -->
-  <div style="margin-bottom:1rem">
+  <div style="margin-bottom:1rem;display:flex;align-items:center;gap:0.75rem">
     <a href="/dashboard" class="btn btn-green" style="font-size:0.78rem">← Back</a>
+    <span style="color:var(--muted);font-size:0.8rem">// {{ bot['name'] }}</span>
   </div>
 
+  <!-- Header -->
   <div class="detail-header">
     <div>
       <div class="detail-name">{{ bot['name'] }}</div>
-      <div style="color:var(--muted);font-size:0.8rem;margin-top:0.2rem">{{ bot['description'] or 'No description' }}</div>
+      <div style="color:var(--muted);font-size:0.8rem;margin-top:0.25rem">
+        {{ bot['description'] or 'No description' }}
+        {% if bot['main_file'] %}
+        &nbsp;·&nbsp; <span style="color:var(--cyan)">▶ {{ bot['main_file'] }}</span>
+        {% endif %}
+      </div>
     </div>
-    <div class="status-badge {{ bot['status'] }}" id="main-status" style="margin-left:1rem">{{ bot['status'] }}</div>
+    <div class="status-badge {{ bot['status'] }}" id="main-status">{{ bot['status'] }}</div>
+
+    {% if pub_url %}
+    <a href="{{ pub_url }}" target="_blank" class="btn btn-cyan" style="margin-left:0.5rem;font-size:0.78rem">
+      🌐 Open App
+    </a>
+    {% endif %}
+
     <div class="detail-actions" id="ctrl-btns">
       {% if bot['status'] == 'running' %}
       <button class="btn btn-yellow" onclick="stopBot()">⏹ Stop</button>
@@ -22,37 +35,53 @@
       {% else %}
       <button class="btn btn-green" onclick="startBot()">▶ Start</button>
       {% endif %}
-      <button class="btn btn-red" onclick="deleteBot()">✕ Delete Bot</button>
+      <button class="btn btn-red" onclick="deleteBot()">✕ Delete</button>
     </div>
   </div>
 
+  {% if pub_url %}
+  <div style="background:rgba(0,255,65,0.06);border:1px solid var(--green-dark);border-radius:4px;padding:0.75rem 1rem;margin-bottom:1.2rem;display:flex;align-items:center;gap:0.75rem">
+    <span style="font-size:1.1rem">🌐</span>
+    <div>
+      <div style="color:var(--green);font-size:0.82rem;margin-bottom:0.15rem">Public URL (24/7)</div>
+      <a href="{{ pub_url }}" target="_blank" style="color:var(--cyan);font-size:0.9rem;word-break:break-all">{{ pub_url }}</a>
+    </div>
+    <button class="btn btn-green" style="margin-left:auto;font-size:0.75rem;padding:0.2rem 0.6rem" onclick="navigator.clipboard.writeText('{{ pub_url }}');showToast('Copied!')">Copy</button>
+  </div>
+  {% endif %}
+
   <div class="detail-grid">
-    <!-- Console -->
+
+    <!-- ── LEFT: Console ───────────────────────────────── -->
     <div>
       <div class="console-box">
         <div class="console-header">
           <div class="console-dots">
-            <span class="dot-r"></span>
-            <span class="dot-y"></span>
-            <span class="dot-g"></span>
+            <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
           </div>
-          <div class="console-title">CONSOLE OUTPUT // {{ bot['name'] }}</div>
-          <button class="btn btn-green" style="font-size:0.72rem;padding:0.2rem 0.6rem" onclick="refreshLogs()">⟳ Refresh</button>
+          <div class="console-title">CONSOLE // {{ bot['name'] }}
+            <span id="live-dot" style="display:none;color:var(--green);margin-left:0.4rem;animation:blink 1s step-end infinite">●</span>
+          </div>
+          <div style="display:flex;gap:0.4rem">
+            <button class="btn btn-green" style="font-size:0.7rem;padding:0.15rem 0.5rem" onclick="clearConsole()">Clear</button>
+            <button class="btn btn-green" style="font-size:0.7rem;padding:0.15rem 0.5rem" onclick="refreshLogs()">⟳</button>
+          </div>
         </div>
         <div class="console-body" id="console-body">
           {% for log in logs %}
-          <div class="log-line slide-up">
+          <div class="log-line" data-id="{{ log['id'] }}">
             <span class="log-time">{{ log['created_at'][11:19] }}</span>
-            <span class="log-level {{ log['level'] }}">[{{ log['level'].upper() }}]</span>
+            <span class="log-level {{ log['level'] }}">[{{ log['level']|upper }}]</span>
             <span class="log-msg {{ log['level'] }}">{{ log['message'] }}</span>
           </div>
           {% endfor %}
           {% if not logs %}
-          <div style="color:var(--muted);font-size:0.82rem">No logs yet. Start the bot to see output.</div>
+          <div id="no-logs" style="color:var(--muted);font-size:0.82rem">Start the bot to see output.</div>
           {% endif %}
         </div>
       </div>
-      <div style="margin-top:0.8rem;display:flex;gap:0.5rem">
+      <!-- Log input -->
+      <div style="display:flex;gap:0.5rem;margin-top:0.6rem">
         <input class="form-input" type="text" id="custom-log" placeholder="Simulate log message..." style="flex:1">
         <select class="form-input" id="log-level" style="width:90px">
           <option value="info">INFO</option>
@@ -65,60 +94,96 @@
       </div>
     </div>
 
-    <!-- File Manager -->
+    <!-- ── RIGHT: Files ────────────────────────────────── -->
     <div>
+
+      <!-- Main file selector -->
+      <div style="background:var(--card);border:1px solid var(--card-border);border-radius:4px;padding:0.8rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap">
+        <span style="color:var(--muted);font-size:0.78rem;text-transform:uppercase;letter-spacing:1px">Main File:</span>
+        <select class="form-input" id="main-file-select" style="flex:1;min-width:140px">
+          <option value="">— auto-detect —</option>
+          {% for f in files %}
+          {% if f['filename'].endswith('.py') %}
+          <option value="{{ f['filename'] }}" {% if bot['main_file']==f['filename'] %}selected{% endif %}>{{ f['filename'] }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+        <button class="btn btn-cyan" style="font-size:0.78rem" onclick="setMainFile()">Set</button>
+        {% if bot['main_file'] %}
+        <span style="color:var(--green);font-size:0.75rem">✔ {{ bot['main_file'] }}</span>
+        {% endif %}
+      </div>
+
+      <!-- File Manager -->
       <div class="file-box">
         <div class="file-header">
-          <div class="file-title">FILE MANAGER // {{ files|length }} files</div>
-          <button class="btn btn-green" style="font-size:0.72rem;padding:0.2rem 0.6rem" onclick="document.getElementById('file-input').click()">+ Upload</button>
+          <div class="file-title">FILES // <span id="file-count">{{ files|length }}</span></div>
+          <div style="display:flex;gap:0.4rem">
+            <button class="btn btn-cyan" style="font-size:0.72rem;padding:0.2rem 0.6rem" onclick="document.getElementById('zip-input').click()">📦 ZIP</button>
+            <button class="btn btn-green" style="font-size:0.72rem;padding:0.2rem 0.6rem" onclick="document.getElementById('file-input').click()">+ File</button>
+          </div>
         </div>
-        <input type="file" id="file-input" multiple style="display:none" onchange="uploadFiles(this)">
+
+        <!-- Hidden inputs -->
+        <input type="file" id="file-input" multiple accept=".py,.txt,.json,.env,.yaml,.yml,.cfg,.ini,.md,.js,.html,.css,.sh" style="display:none" onchange="uploadFiles(this)">
+        <input type="file" id="zip-input" accept=".zip" style="display:none" onchange="uploadZip(this)">
+
+        <!-- Progress bar -->
+        <div id="upload-progress" style="display:none;padding:0.5rem 1rem">
+          <div style="background:var(--bg2);border-radius:3px;height:4px;overflow:hidden">
+            <div id="progress-bar" style="background:var(--green);height:100%;width:0%;transition:width 0.3s"></div>
+          </div>
+          <div id="progress-msg" style="color:var(--muted);font-size:0.75rem;margin-top:0.3rem"></div>
+        </div>
+
         <div class="file-list" id="file-list">
           {% for f in files %}
           <div class="file-item" id="file-{{ f['id'] }}">
-            <span class="file-icon">📄</span>
+            <span class="file-icon">{{ '🐍' if f['filename'].endswith('.py') else ('📋' if f['filename'].endswith('.txt') else ('📄' if f['filename'].endswith('.json') else '📎')) }}</span>
             <span class="file-name" title="{{ f['filename'] }}">{{ f['filename'] }}</span>
-            <span class="file-size">{{ (f['size']/1024)|round(1) }} KB</span>
-            <button class="file-view" onclick="viewFile({{ f['id'] }}, '{{ f['filename'] }}')" title="View/Edit">✎</button>
-            <button class="file-del" onclick="deleteFile({{ f['id'] }})" title="Delete">✕</button>
+            <span class="file-size">{{ (f['size']/1024)|round(1) }}KB</span>
+            {% if f['filename'] == bot['main_file'] %}
+            <span style="color:var(--green);font-size:0.7rem;border:1px solid var(--green-dark);padding:0.05rem 0.3rem;border-radius:2px">MAIN</span>
+            {% endif %}
+            {% if f['filename'] == 'requirements.txt' %}
+            <span style="color:var(--yellow);font-size:0.7rem;border:1px solid rgba(255,224,65,0.3);padding:0.05rem 0.3rem;border-radius:2px">REQ</span>
+            {% endif %}
+            <button class="file-view" onclick="viewFile({{ f['id'] }},'{{ f['filename'] }}')" title="Edit">✎</button>
+            <button class="file-del" onclick="deleteFile({{ f['id'] }},'{{ f['filename'] }}')" title="Delete">✕</button>
           </div>
           {% endfor %}
           {% if not files %}
-          <div class="empty-msg" id="empty-msg">No files uploaded yet.</div>
+          <div class="empty-msg" id="empty-msg">No files yet. Upload .py files or a ZIP.</div>
           {% endif %}
         </div>
-        <!-- Upload Zone -->
-        <div class="upload-zone" onclick="document.getElementById('file-input').click()">
-          <label>Click or drag files here to upload</label>
+
+        <!-- Drop zone -->
+        <div class="upload-zone" id="drop-zone">
+          <label>Drop files or ZIP here — or click to browse</label>
         </div>
       </div>
 
-      <!-- New Text File -->
-      <div style="margin-top:1rem">
-        <div class="new-bot-card" style="padding:1rem">
-          <h3 style="margin-bottom:0.8rem">+ NEW TEXT FILE</h3>
-          <div class="form-group" style="margin-bottom:0.6rem">
-            <label>Filename</label>
-            <input class="form-input" type="text" id="nf-name" placeholder="main.py">
-          </div>
-          <div class="form-group" style="margin-bottom:0.6rem">
-            <label>Content</label>
-            <textarea class="file-content-area" id="nf-content" style="min-height:100px" placeholder="# Write your code here"></textarea>
-          </div>
-          <button class="btn btn-green" onclick="saveNewFile()">💾 Save File</button>
+      <!-- New text file -->
+      <div class="new-bot-card" style="padding:0.9rem;margin-top:1rem">
+        <h3 style="margin-bottom:0.7rem;font-size:0.82rem">+ NEW FILE</h3>
+        <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+          <input class="form-input" type="text" id="nf-name" placeholder="main.py or requirements.txt" style="flex:1">
         </div>
+        <textarea class="file-content-area" id="nf-content" style="min-height:90px" placeholder="# Python code here..."></textarea>
+        <button class="btn btn-green" onclick="saveNewFile()" style="margin-top:0.5rem">💾 Save</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- View/Edit File Modal -->
+<!-- File View/Edit Modal -->
 <div class="modal-overlay hidden" id="file-modal">
-  <div class="modal-box">
+  <div class="modal-box" style="max-width:620px">
     <div class="modal-title" id="modal-filename">FILE VIEWER</div>
-    <textarea class="file-content-area" id="modal-content" style="min-height:260px"></textarea>
+    <textarea class="file-content-area" id="modal-content" style="min-height:280px"></textarea>
     <div class="modal-actions">
       <input type="hidden" id="modal-file-id">
+      <input type="hidden" id="modal-file-name">
       <button class="btn btn-green" onclick="saveFileEdit()">💾 Save Changes</button>
       <button class="btn btn-red" onclick="closeModal()">✕ Close</button>
     </div>
@@ -131,198 +196,303 @@
 {% block scripts %}
 <script>
 const BOT_ID = {{ bot['id'] }};
+let lastLogId = {{ (logs[-1]['id'] if logs else 0) }};
+let liveInterval = null;
 
-// ─── Console ────────────────────────────────────────────
-function appendLog(log) {
+// ─── Console ─────────────────────────────────────────────
+function escH(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function appendLog(log){
   const cb = document.getElementById('console-body');
-  const noLog = cb.querySelector('[style*="No logs"]');
-  if (noLog) noLog.remove();
-  const div = document.createElement('div');
-  div.className = 'log-line slide-up';
-  const t = log.created_at ? log.created_at.substring(11,19) : new Date().toTimeString().substring(0,8);
-  div.innerHTML = `<span class="log-time">${t}</span><span class="log-level ${log.level}">[${log.level.toUpperCase()}]</span><span class="log-msg ${log.level}">${escHtml(log.message)}</span>`;
-  cb.appendChild(div);
+  const nl = document.getElementById('no-logs');
+  if(nl) nl.remove();
+  const d = document.createElement('div');
+  d.className='log-line slide-up';
+  d.dataset.id = log.id || '';
+  const t = (log.created_at||'').substring(11,19) || new Date().toTimeString().substring(0,8);
+  d.innerHTML = `<span class="log-time">${t}</span><span class="log-level ${log.level}">[${log.level.toUpperCase()}]</span><span class="log-msg ${log.level}">${escH(log.message)}</span>`;
+  cb.appendChild(d);
   cb.scrollTop = cb.scrollHeight;
+  if(log.id && log.id > lastLogId) lastLogId = log.id;
 }
 
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-async function refreshLogs() {
-  const res = await fetch(`/x/bots/${BOT_ID}/logs`);
-  if (!res.ok) return;
-  const logs = await res.json();
+async function refreshLogs(){
+  const r = await fetch(`/x/bots/${BOT_ID}/logs`);
+  if(!r.ok) return;
+  const logs = await r.json();
   const cb = document.getElementById('console-body');
   cb.innerHTML = '';
-  if (!logs.length) { cb.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">No logs yet.</div>'; return; }
+  if(!logs.length){cb.innerHTML='<div style="color:var(--muted);font-size:0.82rem">No logs yet.</div>';return;}
   logs.forEach(appendLog);
 }
 
-async function addCustomLog() {
+async function pollLogs(){
+  try{
+    const r = await fetch(`/x/bots/${BOT_ID}/logs?since=${lastLogId}`);
+    if(!r.ok) return;
+    const logs = await r.json();
+    logs.forEach(appendLog);
+  }catch(e){}
+}
+
+function clearConsole(){
+  document.getElementById('console-body').innerHTML='<div style="color:var(--muted);font-size:0.82rem">Console cleared.</div>';
+}
+
+async function addCustomLog(){
   const msg = document.getElementById('custom-log').value.trim();
   const level = document.getElementById('log-level').value;
-  if (!msg) return;
-  const res = await fetch(`/x/bots/${BOT_ID}/logs/add`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({message: msg, level})
-  });
-  if (res.ok) {
-    appendLog({level, message: msg, created_at: new Date().toISOString().replace('T',' ')});
-    document.getElementById('custom-log').value = '';
+  if(!msg) return;
+  await fetch(`/x/bots/${BOT_ID}/logs/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:msg,level})});
+  appendLog({level,message:msg,created_at:new Date().toISOString().replace('T',' ')});
+  document.getElementById('custom-log').value='';
+}
+document.getElementById('custom-log').addEventListener('keydown',e=>{if(e.key==='Enter') addCustomLog();});
+
+// ─── Bot Controls ─────────────────────────────────────────
+function setStatus(s){
+  const el = document.getElementById('main-status');
+  el.className=`status-badge ${s}`;
+  el.textContent=s;
+  const btns = document.getElementById('ctrl-btns');
+  if(s==='running'){
+    btns.innerHTML=`
+      <button class="btn btn-yellow" onclick="stopBot()">⏹ Stop</button>
+      <button class="btn btn-cyan" onclick="restartBot()">↻ Restart</button>
+      <button class="btn btn-red" onclick="deleteBot()">✕ Delete</button>`;
+    startLive();
+  } else {
+    btns.innerHTML=`
+      <button class="btn btn-green" onclick="startBot()">▶ Start</button>
+      <button class="btn btn-red" onclick="deleteBot()">✕ Delete</button>`;
+    stopLive();
   }
 }
 
-document.getElementById('custom-log').addEventListener('keydown', e => {
-  if (e.key === 'Enter') addCustomLog();
-});
-
-// Auto-refresh logs every 5s if bot is running
-const statusEl = document.getElementById('main-status');
-if (statusEl && statusEl.textContent.trim() === 'running') {
-  setInterval(refreshLogs, 5000);
+function startLive(){
+  document.getElementById('live-dot').style.display='inline';
+  if(!liveInterval) liveInterval=setInterval(pollLogs,2000);
+}
+function stopLive(){
+  document.getElementById('live-dot').style.display='none';
+  if(liveInterval){clearInterval(liveInterval);liveInterval=null;}
 }
 
-// ─── Bot Controls ────────────────────────────────────────
-async function startBot() {
-  const res = await fetch(`/x/bots/${BOT_ID}/start`, {method:'POST'});
-  if (res.ok) { showToast('Bot started!'); setTimeout(() => location.reload(), 700); }
-  else showToast('Failed', 'error');
-}
-async function stopBot() {
-  const res = await fetch(`/x/bots/${BOT_ID}/stop`, {method:'POST'});
-  if (res.ok) { showToast('Bot stopped.'); setTimeout(() => location.reload(), 700); }
-  else showToast('Failed', 'error');
-}
-async function restartBot() {
-  const res = await fetch(`/x/bots/${BOT_ID}/restart`, {method:'POST'});
-  if (res.ok) { showToast('Bot restarted!'); setTimeout(() => location.reload(), 700); }
-  else showToast('Failed', 'error');
-}
-async function deleteBot() {
-  if (!confirm('Delete this bot and ALL files? This is permanent.')) return;
-  const res = await fetch(`/x/bots/${BOT_ID}/delete`, {method:'DELETE'});
-  if (res.ok) { showToast('Deleted.'); setTimeout(() => location.href='/dashboard', 600); }
-  else showToast('Failed', 'error');
-}
-
-// ─── File Manager ────────────────────────────────────────
-async function uploadFiles(input) {
-  for (const file of input.files) {
-    const content = await readFileAsText(file);
-    const res = await fetch(`/x/bots/${BOT_ID}/files`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({filename: file.name, content})
-    });
-    if (res.ok) {
-      const data = await res.json();
-      addFileToList(data);
-      showToast(`Uploaded: ${file.name}`);
-      appendLog({level:'info', message:`File uploaded: ${file.name}`, created_at: new Date().toISOString().replace('T',' ')});
-    } else showToast(`Failed: ${file.name}`, 'error');
+async function startBot(){
+  const btn = document.querySelector('#ctrl-btns .btn-green');
+  if(btn){btn.disabled=true;btn.textContent='Starting...';}
+  const r = await fetch(`/x/bots/${BOT_ID}/start`,{method:'POST'});
+  const data = await r.json();
+  if(r.ok){
+    showToast('Bot started!');
+    setStatus('running');
+    // show public URL if web app
+    if(data.is_web){
+      const domain = location.hostname;
+      const url = `https://${domain}/run/${BOT_ID}/`;
+      const banner = document.createElement('div');
+      banner.style.cssText='background:rgba(0,255,65,0.06);border:1px solid var(--green-dark);border-radius:4px;padding:0.75rem 1rem;margin-bottom:1.2rem;display:flex;align-items:center;gap:0.75rem';
+      banner.innerHTML=`<span style="font-size:1.1rem">🌐</span><div><div style="color:var(--green);font-size:0.82rem;margin-bottom:0.15rem">Public URL (24/7)</div><a href="${url}" target="_blank" style="color:var(--cyan);font-size:0.9rem">${url}</a></div><button class="btn btn-green" style="margin-left:auto;font-size:0.75rem;padding:0.2rem 0.6rem" onclick="navigator.clipboard.writeText('${url}');showToast('Copied!')">Copy</button>`;
+      document.querySelector('.detail-header').after(banner);
+    }
+    setTimeout(pollLogs,800);
+  } else {
+    showToast(data.error||'Failed to start','error');
+    if(btn){btn.disabled=false;btn.innerHTML='▶ Start';}
   }
-  input.value = '';
 }
 
-function readFileAsText(file) {
-  return new Promise((resolve) => {
-    const r = new FileReader();
-    r.onload = e => resolve(e.target.result);
-    r.readAsText(file);
-  });
+async function stopBot(){
+  const r = await fetch(`/x/bots/${BOT_ID}/stop`,{method:'POST'});
+  if(r.ok){showToast('Bot stopped.');setStatus('stopped');}
+  else showToast('Failed','error');
 }
 
-function addFileToList(f) {
+async function restartBot(){
+  const btn=document.querySelector('#ctrl-btns .btn-cyan');
+  if(btn){btn.disabled=true;btn.textContent='...';}
+  const r = await fetch(`/x/bots/${BOT_ID}/restart`,{method:'POST'});
+  if(r.ok){showToast('Restarted!');setStatus('running');setTimeout(pollLogs,800);}
+  else{showToast('Failed','error');if(btn){btn.disabled=false;btn.textContent='↻ Restart';}}
+}
+
+async function deleteBot(){
+  if(!confirm('Delete this bot and ALL files? Permanent.')) return;
+  const r = await fetch(`/x/bots/${BOT_ID}/delete`,{method:'DELETE'});
+  if(r.ok){showToast('Deleted.');setTimeout(()=>location.href='/dashboard',600);}
+  else showToast('Failed','error');
+}
+
+// ─── File Manager ─────────────────────────────────────────
+function fileIcon(name){
+  if(name.endsWith('.py')) return '🐍';
+  if(name.endsWith('.txt')) return '📋';
+  if(name.endsWith('.json')) return '📄';
+  return '📎';
+}
+
+function addFileRow(f){
   const list = document.getElementById('file-list');
-  const empty = document.getElementById('empty-msg');
-  if (empty) empty.remove();
+  const em = document.getElementById('empty-msg');
+  if(em) em.remove();
   const old = document.getElementById(`file-${f.id}`);
-  if (old) old.remove();
-  const div = document.createElement('div');
-  div.className = 'file-item slide-up';
-  div.id = `file-${f.id}`;
+  if(old) old.remove();
+  const d = document.createElement('div');
+  d.className='file-item slide-up';
+  d.id=`file-${f.id}`;
   const sizeKb = (f.size/1024).toFixed(1);
-  div.innerHTML = `
-    <span class="file-icon">📄</span>
-    <span class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</span>
-    <span class="file-size">${sizeKb} KB</span>
-    <button class="file-view" onclick="viewFile(${f.id}, '${escHtml(f.filename)}')" title="View/Edit">✎</button>
-    <button class="file-del" onclick="deleteFile(${f.id})" title="Delete">✕</button>`;
-  list.insertBefore(div, list.firstChild);
+  const isMain = f.filename === document.getElementById('main-file-select')?.value;
+  const isReq  = f.filename === 'requirements.txt';
+  d.innerHTML=`
+    <span class="file-icon">${fileIcon(f.filename)}</span>
+    <span class="file-name" title="${escH(f.filename)}">${escH(f.filename)}</span>
+    <span class="file-size">${sizeKb}KB</span>
+    ${isMain?'<span style="color:var(--green);font-size:0.7rem;border:1px solid var(--green-dark);padding:0.05rem 0.3rem;border-radius:2px">MAIN</span>':''}
+    ${isReq?'<span style="color:var(--yellow);font-size:0.7rem;border:1px solid rgba(255,224,65,0.3);padding:0.05rem 0.3rem;border-radius:2px">REQ</span>':''}
+    <button class="file-view" onclick="viewFile(${f.id},'${escH(f.filename)}')" title="Edit">✎</button>
+    <button class="file-del" onclick="deleteFile(${f.id},'${escH(f.filename)}')" title="Delete">✕</button>`;
+  list.insertBefore(d, list.firstChild);
+  // update main-file-select
+  const sel = document.getElementById('main-file-select');
+  if(sel && f.filename.endsWith('.py')){
+    if(!sel.querySelector(`option[value="${f.filename}"]`)){
+      const opt=document.createElement('option');
+      opt.value=f.filename; opt.textContent=f.filename;
+      sel.appendChild(opt);
+    }
+  }
+  document.getElementById('file-count').textContent = document.querySelectorAll('.file-item').length;
 }
 
-async function saveNewFile() {
-  const filename = document.getElementById('nf-name').value.trim();
-  const content = document.getElementById('nf-content').value;
-  if (!filename) { showToast('Filename required', 'error'); return; }
-  const res = await fetch(`/x/bots/${BOT_ID}/files`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({filename, content})
+async function uploadFiles(input){
+  for(const file of input.files){
+    const content = await readText(file);
+    const r = await fetch(`/x/bots/${BOT_ID}/files`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({filename:file.name,content})
+    });
+    if(r.ok){addFileRow(await r.json());showToast(`Uploaded: ${file.name}`);}
+    else showToast(`Failed: ${file.name}`,'error');
+  }
+  input.value='';
+}
+
+async function uploadZip(input){
+  const file = input.files[0];
+  if(!file) return;
+  showProgress(0, `Reading ${file.name}...`);
+  const buf = await file.arrayBuffer();
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  showProgress(40, 'Uploading ZIP...');
+  const r = await fetch(`/x/bots/${BOT_ID}/upload-zip`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({data:b64})
   });
-  if (res.ok) {
-    const data = await res.json();
-    addFileToList(data);
-    document.getElementById('nf-name').value = '';
-    document.getElementById('nf-content').value = '';
-    showToast(`Saved: ${filename}`);
-  } else showToast('Failed to save', 'error');
+  const data = await r.json();
+  showProgress(100,'Done!');
+  setTimeout(hideProgress, 1000);
+  if(r.ok){
+    showToast(`📦 ${data.uploaded} files extracted!`);
+    // reload file list
+    const fr = await fetch(`/x/bots/${BOT_ID}/files`);
+    const files = await fr.json();
+    document.getElementById('file-list').innerHTML='';
+    files.reverse().forEach(addFileRow);
+    if(data.main_file){
+      const sel=document.getElementById('main-file-select');
+      if(sel) sel.value=data.main_file;
+      showToast(`Main file: ${data.main_file}`);
+    }
+  } else showToast(data.error||'ZIP upload failed','error');
+  input.value='';
 }
 
-async function deleteFile(id) {
-  if (!confirm('Delete this file?')) return;
-  const res = await fetch(`/x/bots/${BOT_ID}/files/${id}`, {method:'DELETE'});
-  if (res.ok) {
-    const el = document.getElementById(`file-${id}`);
-    if (el) el.remove();
-    showToast('File deleted.');
-  } else showToast('Failed', 'error');
+function showProgress(pct, msg){
+  document.getElementById('upload-progress').style.display='block';
+  document.getElementById('progress-bar').style.width=pct+'%';
+  document.getElementById('progress-msg').textContent=msg;
+}
+function hideProgress(){document.getElementById('upload-progress').style.display='none';}
+
+function readText(file){
+  return new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsText(file);});
 }
 
-async function viewFile(id, name) {
-  const res = await fetch(`/x/bots/${BOT_ID}/files/${id}/content`);
-  if (!res.ok) return;
-  const data = await res.json();
-  document.getElementById('modal-filename').textContent = `✎ ${name}`;
-  document.getElementById('modal-content').value = data.content;
-  document.getElementById('modal-file-id').value = id;
+async function saveNewFile(){
+  const name = document.getElementById('nf-name').value.trim();
+  const content = document.getElementById('nf-content').value;
+  if(!name){showToast('Filename required','error');return;}
+  const r = await fetch(`/x/bots/${BOT_ID}/files`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({filename:name,content})
+  });
+  if(r.ok){addFileRow(await r.json());document.getElementById('nf-name').value='';document.getElementById('nf-content').value='';showToast(`Saved: ${name}`);}
+  else showToast('Failed','error');
+}
+
+async function deleteFile(id,name){
+  if(!confirm(`Delete ${name}?`)) return;
+  const r = await fetch(`/x/bots/${BOT_ID}/files/${id}`,{method:'DELETE'});
+  if(r.ok){const el=document.getElementById(`file-${id}`);if(el)el.remove();showToast('Deleted.');}
+  else showToast('Failed','error');
+  document.getElementById('file-count').textContent=document.querySelectorAll('.file-item').length;
+}
+
+async function viewFile(id,name){
+  const r = await fetch(`/x/bots/${BOT_ID}/files/${id}/content`);
+  if(!r.ok) return;
+  const d = await r.json();
+  document.getElementById('modal-filename').textContent=`✎ ${name}`;
+  document.getElementById('modal-content').value=d.content;
+  document.getElementById('modal-file-id').value=id;
+  document.getElementById('modal-file-name').value=name;
   document.getElementById('file-modal').classList.remove('hidden');
 }
 
-async function saveFileEdit() {
-  const id = document.getElementById('modal-file-id').value;
-  const content = document.getElementById('modal-content').value;
-  const filename = document.getElementById('modal-filename').textContent.replace('✎ ','').trim();
-  const res = await fetch(`/x/bots/${BOT_ID}/files`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({filename, content})
+async function saveFileEdit(){
+  const name=document.getElementById('modal-file-name').value;
+  const content=document.getElementById('modal-content').value;
+  const r=await fetch(`/x/bots/${BOT_ID}/files`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({filename:name,content})
   });
-  if (res.ok) {
-    const data = await res.json();
-    addFileToList(data);
-    closeModal();
-    showToast('File saved!');
-  } else showToast('Failed', 'error');
+  if(r.ok){addFileRow(await r.json());closeModal();showToast('Saved!');}
+  else showToast('Failed','error');
 }
 
-function closeModal() {
-  document.getElementById('file-modal').classList.add('hidden');
+function closeModal(){document.getElementById('file-modal').classList.add('hidden');}
+document.getElementById('file-modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+async function setMainFile(){
+  const val=document.getElementById('main-file-select').value;
+  const r=await fetch(`/x/bots/${BOT_ID}/set-main`,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({main_file:val})
+  });
+  if(r.ok) showToast(val?`Main file set: ${val}`:'Will auto-detect');
+  else showToast('Failed','error');
 }
 
-// Close modal on overlay click
-document.getElementById('file-modal').addEventListener('click', function(e) {
-  if (e.target === this) closeModal();
+// ─── Drag & drop ──────────────────────────────────────────
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.style.borderColor='var(--green)';});
+dz.addEventListener('dragleave',()=>dz.style.borderColor='');
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.style.borderColor='';
+  const files=e.dataTransfer.files;
+  if(!files.length) return;
+  if(files.length===1 && files[0].name.endsWith('.zip')){
+    uploadZip({files,value:''});
+  } else {
+    uploadFiles({files,value:''});
+  }
 });
+dz.addEventListener('click',()=>document.getElementById('file-input').click());
 
-// Drag & drop upload
-const uploadZone = document.querySelector('.upload-zone');
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.borderColor = 'var(--green)'; });
-uploadZone.addEventListener('dragleave', () => uploadZone.style.borderColor = '');
-uploadZone.addEventListener('drop', e => {
-  e.preventDefault(); uploadZone.style.borderColor = '';
-  const dt = e.dataTransfer;
-  if (dt.files.length) uploadFiles({files: dt.files, value: ''});
-});
+// ─── Init ────────────────────────────────────────────────
+(function(){
+  const status = document.getElementById('main-status').textContent.trim();
+  if(status==='running') startLive();
+})();
 </script>
 {% endblock %}
