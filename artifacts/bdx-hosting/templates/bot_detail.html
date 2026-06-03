@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block title %}{{ bot['name'] }} — BDX HOSTING{% endblock %}
+
+{% block content %}
+<div class="container">
+  <!-- Back + Header -->
+  <div style="margin-bottom:1rem">
+    <a href="/dashboard" class="btn btn-green" style="font-size:0.78rem">← Back</a>
+  </div>
+
+  <div class="detail-header">
+    <div>
+      <div class="detail-name">{{ bot['name'] }}</div>
+      <div style="color:var(--muted);font-size:0.8rem;margin-top:0.2rem">{{ bot['description'] or 'No description' }}</div>
+    </div>
+    <div class="status-badge {{ bot['status'] }}" id="main-status" style="margin-left:1rem">{{ bot['status'] }}</div>
+    <div class="detail-actions" id="ctrl-btns">
+      {% if bot['status'] == 'running' %}
+      <button class="btn btn-yellow" onclick="stopBot()">⏹ Stop</button>
+      <button class="btn btn-cyan" onclick="restartBot()">↻ Restart</button>
+      {% else %}
+      <button class="btn btn-green" onclick="startBot()">▶ Start</button>
+      {% endif %}
+      <button class="btn btn-red" onclick="deleteBot()">✕ Delete Bot</button>
+    </div>
+  </div>
+
+  <div class="detail-grid">
+    <!-- Console -->
+    <div>
+      <div class="console-box">
+        <div class="console-header">
+          <div class="console-dots">
+            <span class="dot-r"></span>
+            <span class="dot-y"></span>
+            <span class="dot-g"></span>
+          </div>
+          <div class="console-title">CONSOLE OUTPUT // {{ bot['name'] }}</div>
+          <button class="btn btn-green" style="font-size:0.72rem;padding:0.2rem 0.6rem" onclick="refreshLogs()">⟳ Refresh</button>
+        </div>
+        <div class="console-body" id="console-body">
+          {% for log in logs %}
+          <div class="log-line slide-up">
+            <span class="log-time">{{ log['created_at'][11:19] }}</span>
+            <span class="log-level {{ log['level'] }}">[{{ log['level'].upper() }}]</span>
+            <span class="log-msg {{ log['level'] }}">{{ log['message'] }}</span>
+          </div>
+          {% endfor %}
+          {% if not logs %}
+          <div style="color:var(--muted);font-size:0.82rem">No logs yet. Start the bot to see output.</div>
+          {% endif %}
+        </div>
+      </div>
+      <div style="margin-top:0.8rem;display:flex;gap:0.5rem">
+        <input class="form-input" type="text" id="custom-log" placeholder="Simulate log message..." style="flex:1">
+        <select class="form-input" id="log-level" style="width:90px">
+          <option value="info">INFO</option>
+          <option value="success">SUCCESS</option>
+          <option value="warn">WARN</option>
+          <option value="error">ERROR</option>
+          <option value="debug">DEBUG</option>
+        </select>
+        <button class="btn btn-green" onclick="addCustomLog()">Send</button>
+      </div>
+    </div>
+
+    <!-- File Manager -->
+    <div>
+      <div class="file-box">
+        <div class="file-header">
+          <div class="file-title">FILE MANAGER // {{ files|length }} files</div>
+          <button class="btn btn-green" style="font-size:0.72rem;padding:0.2rem 0.6rem" onclick="document.getElementById('file-input').click()">+ Upload</button>
+        </div>
+        <input type="file" id="file-input" multiple style="display:none" onchange="uploadFiles(this)">
+        <div class="file-list" id="file-list">
+          {% for f in files %}
+          <div class="file-item" id="file-{{ f['id'] }}">
+            <span class="file-icon">📄</span>
+            <span class="file-name" title="{{ f['filename'] }}">{{ f['filename'] }}</span>
+            <span class="file-size">{{ (f['size']/1024)|round(1) }} KB</span>
+            <button class="file-view" onclick="viewFile({{ f['id'] }}, '{{ f['filename'] }}')" title="View/Edit">✎</button>
+            <button class="file-del" onclick="deleteFile({{ f['id'] }})" title="Delete">✕</button>
+          </div>
+          {% endfor %}
+          {% if not files %}
+          <div class="empty-msg" id="empty-msg">No files uploaded yet.</div>
+          {% endif %}
+        </div>
+        <!-- Upload Zone -->
+        <div class="upload-zone" onclick="document.getElementById('file-input').click()">
+          <label>Click or drag files here to upload</label>
+        </div>
+      </div>
+
+      <!-- New Text File -->
+      <div style="margin-top:1rem">
+        <div class="new-bot-card" style="padding:1rem">
+          <h3 style="margin-bottom:0.8rem">+ NEW TEXT FILE</h3>
+          <div class="form-group" style="margin-bottom:0.6rem">
+            <label>Filename</label>
+            <input class="form-input" type="text" id="nf-name" placeholder="main.py">
+          </div>
+          <div class="form-group" style="margin-bottom:0.6rem">
+            <label>Content</label>
+            <textarea class="file-content-area" id="nf-content" style="min-height:100px" placeholder="# Write your code here"></textarea>
+          </div>
+          <button class="btn btn-green" onclick="saveNewFile()">💾 Save File</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- View/Edit File Modal -->
+<div class="modal-overlay hidden" id="file-modal">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-filename">FILE VIEWER</div>
+    <textarea class="file-content-area" id="modal-content" style="min-height:260px"></textarea>
+    <div class="modal-actions">
+      <input type="hidden" id="modal-file-id">
+      <button class="btn btn-green" onclick="saveFileEdit()">💾 Save Changes</button>
+      <button class="btn btn-red" onclick="closeModal()">✕ Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BOT_ID = {{ bot['id'] }};
+
+// ─── Console ────────────────────────────────────────────
+function appendLog(log) {
+  const cb = document.getElementById('console-body');
+  const noLog = cb.querySelector('[style*="No logs"]');
+  if (noLog) noLog.remove();
+  const div = document.createElement('div');
+  div.className = 'log-line slide-up';
+  const t = log.created_at ? log.created_at.substring(11,19) : new Date().toTimeString().substring(0,8);
+  div.innerHTML = `<span class="log-time">${t}</span><span class="log-level ${log.level}">[${log.level.toUpperCase()}]</span><span class="log-msg ${log.level}">${escHtml(log.message)}</span>`;
+  cb.appendChild(div);
+  cb.scrollTop = cb.scrollHeight;
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function refreshLogs() {
+  const res = await fetch(`/api/bots/${BOT_ID}/logs`);
+  if (!res.ok) return;
+  const logs = await res.json();
+  const cb = document.getElementById('console-body');
+  cb.innerHTML = '';
+  if (!logs.length) { cb.innerHTML = '<div style="color:var(--muted);font-size:0.82rem">No logs yet.</div>'; return; }
+  logs.forEach(appendLog);
+}
+
+async function addCustomLog() {
+  const msg = document.getElementById('custom-log').value.trim();
+  const level = document.getElementById('log-level').value;
+  if (!msg) return;
+  const res = await fetch(`/api/bots/${BOT_ID}/logs/add`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({message: msg, level})
+  });
+  if (res.ok) {
+    appendLog({level, message: msg, created_at: new Date().toISOString().replace('T',' ')});
+    document.getElementById('custom-log').value = '';
+  }
+}
+
+document.getElementById('custom-log').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addCustomLog();
+});
+
+// Auto-refresh logs every 5s if bot is running
+const statusEl = document.getElementById('main-status');
+if (statusEl && statusEl.textContent.trim() === 'running') {
+  setInterval(refreshLogs, 5000);
+}
+
+// ─── Bot Controls ────────────────────────────────────────
+async function startBot() {
+  const res = await fetch(`/api/bots/${BOT_ID}/start`, {method:'POST'});
+  if (res.ok) { showToast('Bot started!'); setTimeout(() => location.reload(), 700); }
+  else showToast('Failed', 'error');
+}
+async function stopBot() {
+  const res = await fetch(`/api/bots/${BOT_ID}/stop`, {method:'POST'});
+  if (res.ok) { showToast('Bot stopped.'); setTimeout(() => location.reload(), 700); }
+  else showToast('Failed', 'error');
+}
+async function restartBot() {
+  const res = await fetch(`/api/bots/${BOT_ID}/restart`, {method:'POST'});
+  if (res.ok) { showToast('Bot restarted!'); setTimeout(() => location.reload(), 700); }
+  else showToast('Failed', 'error');
+}
+async function deleteBot() {
+  if (!confirm('Delete this bot and ALL files? This is permanent.')) return;
+  const res = await fetch(`/api/bots/${BOT_ID}/delete`, {method:'DELETE'});
+  if (res.ok) { showToast('Deleted.'); setTimeout(() => location.href='/dashboard', 600); }
+  else showToast('Failed', 'error');
+}
+
+// ─── File Manager ────────────────────────────────────────
+async function uploadFiles(input) {
+  for (const file of input.files) {
+    const content = await readFileAsText(file);
+    const res = await fetch(`/api/bots/${BOT_ID}/files`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({filename: file.name, content})
+    });
+    if (res.ok) {
+      const data = await res.json();
+      addFileToList(data);
+      showToast(`Uploaded: ${file.name}`);
+      appendLog({level:'info', message:`File uploaded: ${file.name}`, created_at: new Date().toISOString().replace('T',' ')});
+    } else showToast(`Failed: ${file.name}`, 'error');
+  }
+  input.value = '';
+}
+
+function readFileAsText(file) {
+  return new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.readAsText(file);
+  });
+}
+
+function addFileToList(f) {
+  const list = document.getElementById('file-list');
+  const empty = document.getElementById('empty-msg');
+  if (empty) empty.remove();
+  const old = document.getElementById(`file-${f.id}`);
+  if (old) old.remove();
+  const div = document.createElement('div');
+  div.className = 'file-item slide-up';
+  div.id = `file-${f.id}`;
+  const sizeKb = (f.size/1024).toFixed(1);
+  div.innerHTML = `
+    <span class="file-icon">📄</span>
+    <span class="file-name" title="${escHtml(f.filename)}">${escHtml(f.filename)}</span>
+    <span class="file-size">${sizeKb} KB</span>
+    <button class="file-view" onclick="viewFile(${f.id}, '${escHtml(f.filename)}')" title="View/Edit">✎</button>
+    <button class="file-del" onclick="deleteFile(${f.id})" title="Delete">✕</button>`;
+  list.insertBefore(div, list.firstChild);
+}
+
+async function saveNewFile() {
+  const filename = document.getElementById('nf-name').value.trim();
+  const content = document.getElementById('nf-content').value;
+  if (!filename) { showToast('Filename required', 'error'); return; }
+  const res = await fetch(`/api/bots/${BOT_ID}/files`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({filename, content})
+  });
+  if (res.ok) {
+    const data = await res.json();
+    addFileToList(data);
+    document.getElementById('nf-name').value = '';
+    document.getElementById('nf-content').value = '';
+    showToast(`Saved: ${filename}`);
+  } else showToast('Failed to save', 'error');
+}
+
+async function deleteFile(id) {
+  if (!confirm('Delete this file?')) return;
+  const res = await fetch(`/api/bots/${BOT_ID}/files/${id}`, {method:'DELETE'});
+  if (res.ok) {
+    const el = document.getElementById(`file-${id}`);
+    if (el) el.remove();
+    showToast('File deleted.');
+  } else showToast('Failed', 'error');
+}
+
+async function viewFile(id, name) {
+  const res = await fetch(`/api/bots/${BOT_ID}/files/${id}/content`);
+  if (!res.ok) return;
+  const data = await res.json();
+  document.getElementById('modal-filename').textContent = `✎ ${name}`;
+  document.getElementById('modal-content').value = data.content;
+  document.getElementById('modal-file-id').value = id;
+  document.getElementById('file-modal').classList.remove('hidden');
+}
+
+async function saveFileEdit() {
+  const id = document.getElementById('modal-file-id').value;
+  const content = document.getElementById('modal-content').value;
+  const filename = document.getElementById('modal-filename').textContent.replace('✎ ','').trim();
+  const res = await fetch(`/api/bots/${BOT_ID}/files`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({filename, content})
+  });
+  if (res.ok) {
+    const data = await res.json();
+    addFileToList(data);
+    closeModal();
+    showToast('File saved!');
+  } else showToast('Failed', 'error');
+}
+
+function closeModal() {
+  document.getElementById('file-modal').classList.add('hidden');
+}
+
+// Close modal on overlay click
+document.getElementById('file-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// Drag & drop upload
+const uploadZone = document.querySelector('.upload-zone');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.style.borderColor = 'var(--green)'; });
+uploadZone.addEventListener('dragleave', () => uploadZone.style.borderColor = '');
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.style.borderColor = '';
+  const dt = e.dataTransfer;
+  if (dt.files.length) uploadFiles({files: dt.files, value: ''});
+});
+</script>
+{% endblock %}

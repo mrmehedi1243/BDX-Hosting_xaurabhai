@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+{% block title %}Dashboard — BDX HOSTING{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">// BOT INSTANCES <span class="blink">_</span></div>
+  <div class="page-sub">Welcome back, <strong style="color:var(--green)">{{ user['username'] }}</strong> — Slot: {{ bots|length }}/{{ user['bot_limit'] }} used</div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <div class="stat-val">{{ bots|length }}</div>
+      <div class="stat-lbl">Total Bots</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="running-count">{{ bots|selectattr('status','eq','running')|list|length }}</div>
+      <div class="stat-lbl">Running</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ user['bot_limit'] }}</div>
+      <div class="stat-lbl">Slot Limit</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ user['bot_limit'] - bots|length }}</div>
+      <div class="stat-lbl">Available</div>
+    </div>
+  </div>
+
+  <!-- New Bot -->
+  {% if bots|length < user['bot_limit'] %}
+  <div class="new-bot-card">
+    <h3>+ DEPLOY NEW INSTANCE</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Bot Name</label>
+        <input class="form-input" type="text" id="new-name" placeholder="my_awesome_bot">
+      </div>
+      <div class="form-group">
+        <label>Description (optional)</label>
+        <input class="form-input" type="text" id="new-desc" placeholder="Telegram bot for...">
+      </div>
+      <div style="display:flex;align-items:flex-end">
+        <button class="btn btn-green btn-lg" onclick="createBot()">▶ Deploy</button>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="new-bot-card" style="text-align:center;border-color:var(--muted)">
+    <div style="color:var(--yellow)">⚠ Bot slot limit reached ({{ user['bot_limit'] }}/{{ user['bot_limit'] }})</div>
+    <div style="color:var(--muted);font-size:0.82rem;margin-top:0.4rem">Contact admin to increase your limit.</div>
+  </div>
+  {% endif %}
+
+  <!-- Bot Grid -->
+  <div class="bots-grid" id="bots-grid">
+    {% for bot in bots %}
+    <div class="bot-card" id="bot-card-{{ bot['id'] }}">
+      <div class="bot-card-header">
+        <div class="bot-name">{{ bot['name'] }}</div>
+        <div class="status-badge {{ bot['status'] }}" id="status-{{ bot['id'] }}">{{ bot['status'] }}</div>
+      </div>
+      <div class="bot-desc">{{ bot['description'] or 'No description' }}</div>
+      <div class="bot-meta">
+        <span>📁 {{ bot['file_count'] }} files</span>
+        <span>🕐 {{ bot['created_at'][:10] }}</span>
+      </div>
+      <div class="bot-actions">
+        {% if bot['status'] == 'running' %}
+        <button class="btn btn-yellow" onclick="stopBot({{ bot['id'] }},event)">⏹ Stop</button>
+        <button class="btn btn-cyan" onclick="restartBot({{ bot['id'] }},event)">↻ Restart</button>
+        {% else %}
+        <button class="btn btn-green" onclick="startBot({{ bot['id'] }},event)">▶ Start</button>
+        {% endif %}
+        <a href="/bot/{{ bot['id'] }}" class="btn btn-cyan">⚙ Manage</a>
+        <button class="btn btn-red" onclick="deleteBot({{ bot['id'] }},event)">✕ Delete</button>
+      </div>
+    </div>
+    {% endfor %}
+    {% if not bots %}
+    <div style="color:var(--muted);font-size:0.9rem;padding:2rem 0;grid-column:1/-1">
+      No instances yet. Deploy your first bot above.
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function createBot() {
+  const name = document.getElementById('new-name').value.trim();
+  const desc = document.getElementById('new-desc').value.trim();
+  if (!name) { showToast('Bot name required', 'error'); return; }
+  const res = await fetch('/api/bots', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, description: desc})
+  });
+  const data = await res.json();
+  if (res.ok) { showToast('Bot deployed!'); setTimeout(() => location.reload(), 600); }
+  else showToast(data.error || 'Failed', 'error');
+}
+
+async function startBot(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  const btn = e.target; btn.disabled = true; btn.textContent = '...';
+  const res = await fetch(`/api/bots/${id}/start`, {method:'POST'});
+  if (res.ok) {
+    document.getElementById(`status-${id}`).className = 'status-badge running';
+    document.getElementById(`status-${id}`).textContent = 'running';
+    btn.closest('.bot-actions').innerHTML = `
+      <button class="btn btn-yellow" onclick="stopBot(${id},event)">⏹ Stop</button>
+      <button class="btn btn-cyan" onclick="restartBot(${id},event)">↻ Restart</button>
+      <a href="/bot/${id}" class="btn btn-cyan">⚙ Manage</a>
+      <button class="btn btn-red" onclick="deleteBot(${id},event)">✕ Delete</button>`;
+    showToast('Bot started!');
+  } else { btn.disabled = false; btn.innerHTML = '▶ Start'; showToast('Failed', 'error'); }
+}
+
+async function stopBot(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  const btn = e.target; btn.disabled = true; btn.textContent = '...';
+  const res = await fetch(`/api/bots/${id}/stop`, {method:'POST'});
+  if (res.ok) {
+    document.getElementById(`status-${id}`).className = 'status-badge stopped';
+    document.getElementById(`status-${id}`).textContent = 'stopped';
+    btn.closest('.bot-actions').innerHTML = `
+      <button class="btn btn-green" onclick="startBot(${id},event)">▶ Start</button>
+      <a href="/bot/${id}" class="btn btn-cyan">⚙ Manage</a>
+      <button class="btn btn-red" onclick="deleteBot(${id},event)">✕ Delete</button>`;
+    showToast('Bot stopped.');
+  } else { btn.disabled = false; btn.textContent = '⏹ Stop'; showToast('Failed', 'error'); }
+}
+
+async function restartBot(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  const btn = e.target; btn.disabled = true; btn.textContent = '...';
+  const res = await fetch(`/api/bots/${id}/restart`, {method:'POST'});
+  if (res.ok) { showToast('Bot restarted!'); setTimeout(() => location.reload(), 600); }
+  else { btn.disabled = false; showToast('Failed', 'error'); }
+}
+
+async function deleteBot(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  if (!confirm('Delete this bot and all its files? This cannot be undone.')) return;
+  const res = await fetch(`/api/bots/${id}/delete`, {method:'DELETE'});
+  if (res.ok) {
+    document.getElementById(`bot-card-${id}`).remove();
+    showToast('Bot deleted.');
+  } else showToast('Failed', 'error');
+}
+</script>
+{% endblock %}

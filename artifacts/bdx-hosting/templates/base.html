@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}BDX HOSTING{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- Telegram Gate -->
+<div id="tg-gate" class="{% if tg_joined %}hidden{% endif %}">
+  <div class="tg-box">
+    <div class="logo">BDX<span>HOSTING</span></div>
+    <div class="sub">// ACCESS CONTROL SYSTEM //</div>
+    <p>Join our official Telegram channel to unlock full access to <strong style="color:var(--green)">BDX HOSTING</strong> platform.</p>
+    <a href="https://t.me/bdxapis" target="_blank" class="tg-btn" id="tg-join-btn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.04 9.61c-.148.677-.548.84-1.11.523l-3.072-2.264-1.483 1.427c-.164.164-.302.302-.618.302l.22-3.12 5.677-5.127c.247-.22-.054-.342-.384-.122L7.13 14.38l-3.03-.948c-.658-.206-.672-.658.137-.974l11.837-4.562c.549-.199 1.03.133.849.972l-.361.38z"/></svg>
+      Join @bdxapis
+    </a>
+    <button class="tg-continue" onclick="joinedTelegram()">I have joined — Continue</button>
+  </div>
+</div>
+
+{% if session.get('user_id') %}
+<!-- Navbar -->
+<nav class="navbar">
+  <a href="/dashboard" class="nav-brand">BDX<span>HOSTING</span></a>
+  <div class="nav-links">
+    <a href="/dashboard" class="nav-link {% if active == 'dashboard' %}active{% endif %}">Dashboard</a>
+    {% if session.get('is_admin') %}
+    <a href="/admin" class="nav-link {% if active == 'admin' %}active{% endif %}">Admin</a>
+    {% endif %}
+    <span class="nav-user"><span>user://</span>{{ session.get('username') }}</span>
+    <button class="btn-logout" onclick="logout()">Logout</button>
+  </div>
+</nav>
+{% endif %}
+
+{% block content %}{% endblock %}
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// Telegram gate
+function joinedTelegram() {
+  document.cookie = "tg_joined=1;path=/;max-age=31536000";
+  document.getElementById('tg-gate').classList.add('hidden');
+}
+(function() {
+  if (document.cookie.includes('tg_joined=1')) {
+    const g = document.getElementById('tg-gate');
+    if (g) g.classList.add('hidden');
+  }
+  const joinBtn = document.getElementById('tg-join-btn');
+  if (joinBtn) {
+    joinBtn.addEventListener('click', function() {
+      setTimeout(joinedTelegram, 1500);
+    });
+  }
+})();
+
+// Toast
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = type === 'error' ? 'error show' : 'show';
+  setTimeout(() => t.className = type === 'error' ? 'error' : '', 3000);
+}
+
+// Logout
+async function logout() {
+  await fetch('/api/logout', {method:'POST'});
+  location.href = '/login';
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

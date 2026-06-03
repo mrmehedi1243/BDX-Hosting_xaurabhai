@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% set active = "admin" %}
+{% block title %}Admin Panel — BDX HOSTING{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-title">// ADMIN PANEL <span class="blink">_</span></div>
+  <div class="page-sub">Full system control — logged in as <strong style="color:var(--green)">{{ user['username'] }}</strong></div>
+
+  <!-- Stats -->
+  <div class="stats-row" style="margin-bottom:2rem">
+    <div class="stat-card">
+      <div class="stat-val">{{ total_users }}</div>
+      <div class="stat-lbl">Total Users</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ total_bots }}</div>
+      <div class="stat-lbl">Total Bots</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" style="color:var(--green)">{{ running_bots }}</div>
+      <div class="stat-lbl">Running</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">{{ total_files }}</div>
+      <div class="stat-lbl">Total Files</div>
+    </div>
+  </div>
+
+  <!-- Users Table -->
+  <div style="background:var(--card);border:1px solid var(--card-border);border-radius:4px;overflow:hidden;margin-bottom:2rem">
+    <div style="background:var(--bg3);border-bottom:1px solid var(--card-border);padding:0.7rem 1rem;display:flex;align-items:center;justify-content:space-between">
+      <div class="section-title" style="margin:0;border:none;padding:0">USER MANAGEMENT</div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Bots Used</th>
+            <th>Bot Limit</th>
+            <th>Role</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr id="user-row-{{ u['id'] }}">
+            <td style="color:var(--muted)">#{{ u['id'] }}</td>
+            <td class="username">{{ u['username'] }}{% if u['is_admin'] %} <span class="admin-badge">ADMIN</span>{% endif %}</td>
+            <td>{{ u['bot_count'] }}</td>
+            <td id="limit-{{ u['id'] }}">{{ u['bot_limit'] }}</td>
+            <td>{% if u['is_admin'] %}<span style="color:var(--yellow)">Admin</span>{% else %}<span style="color:var(--muted)">User</span>{% endif %}</td>
+            <td style="color:var(--muted)">{{ u['created_at'][:10] }}</td>
+            <td>
+              <div style="display:flex;gap:0.4rem;align-items:center">
+                <input type="number" class="form-input" id="new-limit-{{ u['id'] }}" value="{{ u['bot_limit'] }}" min="1" max="999" style="width:65px;padding:0.25rem 0.4rem;font-size:0.8rem">
+                <button class="btn btn-green" style="padding:0.25rem 0.6rem;font-size:0.78rem" onclick="setLimit({{ u['id'] }})">Set</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- All Bots Table -->
+  <div style="background:var(--card);border:1px solid var(--card-border);border-radius:4px;overflow:hidden">
+    <div style="background:var(--bg3);border-bottom:1px solid var(--card-border);padding:0.7rem 1rem">
+      <div class="section-title" style="margin:0;border:none;padding:0">ALL BOT INSTANCES</div>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tbl" id="all-bots-tbl">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Owner</th>
+            <th>Status</th>
+            <th>Files</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="all-bots-body">
+          <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function setLimit(userId) {
+  const val = parseInt(document.getElementById(`new-limit-${userId}`).value);
+  if (isNaN(val) || val < 1) { showToast('Invalid limit', 'error'); return; }
+  const res = await fetch(`/api/admin/users/${userId}/limit`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({bot_limit: val})
+  });
+  if (res.ok) {
+    document.getElementById(`limit-${userId}`).textContent = val;
+    showToast(`Limit updated to ${val}`);
+  } else showToast('Failed', 'error');
+}
+
+async function loadAllBots() {
+  const res = await fetch('/api/admin/bots');
+  if (!res.ok) return;
+  const bots = await res.json();
+  const tbody = document.getElementById('all-bots-body');
+  if (!bots.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:1.5rem">No bots yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = bots.map(b => `
+    <tr>
+      <td style="color:var(--muted)">#${b.id}</td>
+      <td class="username">${escHtml(b.name)}</td>
+      <td style="color:var(--cyan)">${escHtml(b.username)}</td>
+      <td><span class="status-badge ${b.status}">${b.status}</span></td>
+      <td>${b.file_count}</td>
+      <td style="color:var(--muted)">${b.created_at.substring(0,10)}</td>
+      <td>
+        <div style="display:flex;gap:0.3rem;flex-wrap:wrap">
+          ${b.status==='running'
+            ? `<button class="btn btn-yellow" style="padding:0.2rem 0.5rem;font-size:0.75rem" onclick="adminStop(${b.id},${b.user_id},this)">Stop</button>`
+            : `<button class="btn btn-green" style="padding:0.2rem 0.5rem;font-size:0.75rem" onclick="adminStart(${b.id},${b.user_id},this)">Start</button>`
+          }
+          <button class="btn btn-red" style="padding:0.2rem 0.5rem;font-size:0.75rem" onclick="adminDel(${b.id},this)">Del</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function adminStart(id, uid, btn) {
+  btn.disabled = true; btn.textContent = '...';
+  await fetch(`/api/bots/${id}/start`, {method:'POST'});
+  loadAllBots();
+}
+async function adminStop(id, uid, btn) {
+  btn.disabled = true; btn.textContent = '...';
+  await fetch(`/api/bots/${id}/stop`, {method:'POST'});
+  loadAllBots();
+}
+async function adminDel(id, btn) {
+  if (!confirm('Delete this bot?')) return;
+  btn.disabled = true;
+  await fetch(`/api/bots/${id}/delete`, {method:'DELETE'});
+  loadAllBots();
+}
+
+loadAllBots();
+setInterval(loadAllBots, 10000);
+</script>
+{% endblock %}
