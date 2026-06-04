@@ -435,21 +435,49 @@ def _do_start_bot(bot_id, u, db):
         with open(main_path, "r", errors="replace") as fh:
             content = fh.read()
         is_web = detect_web(content)
-        if is_web:
-            env_inject = (
-                f"import os\nos.environ.setdefault('PORT','{port}')\n"
-                f"os.environ.setdefault('HOST','0.0.0.0')\n\n"
-            )
-            with open(main_path, "r+", errors="replace") as fh:
-                original = fh.read()
-                if "os.environ.setdefault('PORT'" not in original:
-                    fh.seek(0)
-                    fh.write(env_inject + original)
     except Exception as e:
         add_log_bg(bot_id, "warn", f"File read warning: {e}")
 
+    # For web apps, write a launcher that monkey-patches Flask/uvicorn to use
+    # our assigned port — this works even if the user hardcoded app.run(port=5000).
+    launch_file = main_file
     if is_web:
         add_log_bg(bot_id, "info", f"🌐 Web app detected — port {port}")
+        runner_src = (
+            f"import os, sys, runpy\n"
+            f"_BDX_PORT = {port}\n"
+            f"os.environ['PORT'] = str(_BDX_PORT)\n"
+            f"os.environ['HOST'] = '0.0.0.0'\n"
+            f"# Monkey-patch Flask so any app.run() uses our port\n"
+            f"try:\n"
+            f"    import flask as _f\n"
+            f"    _orig_run = _f.Flask.run\n"
+            f"    def _bdx_run(self, host=None, port=None, debug=None, use_reloader=False, **kw):\n"
+            f"        _orig_run(self, host='0.0.0.0', port=_BDX_PORT, debug=False, use_reloader=False, **kw)\n"
+            f"    _f.Flask.run = _bdx_run\n"
+            f"except ImportError:\n"
+            f"    pass\n"
+            f"# Monkey-patch uvicorn.run for FastAPI/Starlette apps\n"
+            f"try:\n"
+            f"    import uvicorn as _uv\n"
+            f"    _orig_uv = _uv.run\n"
+            f"    def _bdx_uv_run(app, **kw):\n"
+            f"        kw['host'] = '0.0.0.0'\n"
+            f"        kw['port'] = _BDX_PORT\n"
+            f"        _orig_uv(app, **kw)\n"
+            f"    _uv.run = _bdx_uv_run\n"
+            f"except ImportError:\n"
+            f"    pass\n"
+            f"sys.argv = [r'{main_file}']\n"
+            f"runpy.run_path(r'{main_file}', run_name='__main__')\n"
+        )
+        runner_path = os.path.join(bot_dir(bot_id), "_bdx_runner.py")
+        try:
+            with open(runner_path, "w", encoding="utf-8") as rf:
+                rf.write(runner_src)
+            launch_file = "_bdx_runner.py"
+        except Exception as e:
+            add_log_bg(bot_id, "warn", f"Runner write failed, falling back: {e}")
 
     # 5. Launch subprocess
     try:
@@ -458,7 +486,7 @@ def _do_start_bot(bot_id, u, db):
         env["HOST"] = "0.0.0.0"
         env["PYTHONUNBUFFERED"] = "1"
         proc = subprocess.Popen(
-            [sys.executable, "-u", main_file],
+            [sys.executable, "-u", launch_file],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, cwd=bot_dir(bot_id), env=env
         )
