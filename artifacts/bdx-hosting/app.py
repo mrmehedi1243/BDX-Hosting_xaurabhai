@@ -840,10 +840,7 @@ def favicon():
     svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#050f05"/><text x="4" y="24" font-size="22" fill="#00ff41">B</text></svg>'
     return Response(svg, mimetype="image/svg+xml")
 
-# ── Startup ────────────────────────────────────────────────────────────────────
-# init_db() runs at module import so gunicorn workers initialise the DB too.
-init_db()
-
 if __name__ == "__main__":
+    init_db()
     port = int(os.environ.get("PORT", 20856))
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)

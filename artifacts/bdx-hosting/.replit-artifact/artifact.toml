@@ -18,7 +18,7 @@ localPort = 20856
 run = "python /home/runner/workspace/artifacts/bdx-hosting/app.py"
 
 [services.production]
-run = "gunicorn app:app --bind 0.0.0.0:20856 --workers 2 --threads 4 --timeout 120"
+run = "gunicorn wsgi:application --chdir /home/runner/workspace/artifacts/bdx-hosting --bind 0.0.0.0:20856 --workers 2 --threads 4 --timeout 120"
 
 [services.env]
 PORT = "20856"
