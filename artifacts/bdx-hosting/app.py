@@ -180,20 +180,27 @@ def write_instance_files(bot_id):
     return [f["filename"] for f in files]
 
 def install_requirements(bot_id):
-    """pip install -r requirements.txt if it exists. Returns log lines."""
+    """pip install -r requirements.txt if it exists. Cross-platform."""
     req_path = os.path.join(bot_dir(bot_id), "requirements.txt")
     if not os.path.exists(req_path):
         return
     add_log_bg(bot_id, "info", "📦 Found requirements.txt — installing packages...")
-    try:
+    # Build pip command — try with --break-system-packages (NixOS/Replit),
+    # fall back to plain install (Railway, Render, etc.)
+    def _run_pip(extra_flags):
+        cmd = [sys.executable, "-m", "pip", "install", "-r", req_path, "--quiet"] + extra_flags
         proc = subprocess.Popen(
-            [sys.executable, "-m", "pip", "install", "-r", req_path,
-             "--quiet", "--break-system-packages"],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, cwd=bot_dir(bot_id)
         )
-        out, _ = proc.communicate(timeout=120)
-        if proc.returncode == 0:
+        out, _ = proc.communicate(timeout=180)
+        return proc.returncode, out
+    try:
+        rc, out = _run_pip(["--break-system-packages"])
+        if rc != 0 and "break-system-packages" in out:
+            # Not NixOS — retry without the flag
+            rc, out = _run_pip([])
+        if rc == 0:
             add_log_bg(bot_id, "success", "✅ Requirements installed successfully.")
         else:
             add_log_bg(bot_id, "error", f"❌ pip install failed:\n{out[:500]}")
@@ -833,7 +840,10 @@ def favicon():
     svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#050f05"/><text x="4" y="24" font-size="22" fill="#00ff41">B</text></svg>'
     return Response(svg, mimetype="image/svg+xml")
 
+# ── Startup ────────────────────────────────────────────────────────────────────
+# init_db() runs at module import so gunicorn workers initialise the DB too.
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     port = int(os.environ.get("PORT", 20856))
     app.run(host="0.0.0.0", port=port, debug=False, threaded=True)
